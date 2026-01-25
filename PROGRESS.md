@@ -15,6 +15,45 @@
 - [x] .gitignore files configured
 - [x] Git commits following project conventions
 
+### Phase 2: Python ASR Service ✅ COMPLETE
+
+- [x] **ASR Model Module** (`src/asr/model.py`)
+  - AudioConfig dataclass with validation
+  - ASRModel placeholder implementation
+  - Audio preprocessing (int16 to float normalization)
+  - Placeholder transcription methods
+  - Stream transcription support
+  - 6 tests passing
+
+- [x] **FastAPI Streaming Endpoints** (`src/api/routes.py`)
+  - Session-based ASR streaming
+  - POST /api/asr/start - Start transcription session
+  - POST /api/asr/audio/{id} - Send audio chunks
+  - POST /api/asr/stop/{id} - Stop and get final transcript
+  - GET /api/asr/status/{id} - Get session status
+  - POST /api/asr/transcribe - Transcribe complete audio file
+  - WebSocket endpoint for real-time streaming
+  - 6 tests passing (3 skipped - WebSocket integration tests)
+
+- [x] **Text Post-Processor** (`src/postprocess/processor.py`)
+  - Filler word removal (um, uh, like, you know, etc.)
+  - Duplicate word/phrase removal
+  - Self-correction detection (no actually, wait, etc.)
+  - Automatic list formatting
+  - Full processing pipeline with statistics
+  - Custom rule support
+  - 16 tests passing
+
+- [x] **Cloud LLM Integration** (`src/postprocess/cloud_llm.py`)
+  - Provider abstraction layer
+  - Anthropic Claude provider implementation
+  - OpenAI GPT provider implementation
+  - Provider factory pattern
+  - Fallback mechanism between providers
+  - Environment variable support
+  - Error handling with graceful fallback
+  - 19 tests passing
+
 ### Current Project Structure
 
 ```
@@ -33,16 +72,24 @@ typeless_2/
 │   │       └── Services/          # Service clients
 │   └── Tests/                     # Swift tests
 │
-└── PythonService/                 # Python inference service ✅
+└── PythonService/                 # Python inference service ✅ COMPLETE
     ├── pyproject.toml             # uv project config
     ├── uv.lock                    # Dependency lock
     ├── src/
     │   ├── api/
-    │   │   └── server.py          # FastAPI server
-    │   ├── asr/                   # ASR module (pending)
-    │   └── postprocess/           # Post-processing (pending)
+    │   │   ├── server.py          # FastAPI server
+    │   │   └── routes.py          # ASR API routes
+    │   ├── asr/
+    │   │   └── model.py           # ASR model (placeholder)
+    │   └── postprocess/
+    │       ├── processor.py       # Rule-based text cleaning
+    │       └── cloud_llm.py       # Cloud LLM providers
     └── tests/
-        └── test_asr.py            # ASR tests
+        ├── test_asr.py            # Server tests
+        ├── test_asr_model.py      # ASR model tests
+        ├── test_api_routes.py     # API endpoint tests
+        ├── test_postprocess.py    # Post-processor tests
+        └── test_cloud_llm.py      # Cloud LLM tests
 ```
 
 ## Known Issues
