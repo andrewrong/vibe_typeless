@@ -4,7 +4,11 @@ FastAPI server for handling ASR requests and text post-processing
 """
 
 from fastapi import FastAPI
-from api.routes import router as asr_router
+try:
+    from .routes import router as asr_router
+except ImportError:
+    # Fallback for running directly
+    from routes import router as asr_router
 
 app = FastAPI(
     title="Typeless Service",
