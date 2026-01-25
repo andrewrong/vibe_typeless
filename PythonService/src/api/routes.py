@@ -11,6 +11,7 @@ from pydantic import BaseModel
 import numpy as np
 
 from asr.model import ASRModel, AudioConfig
+from asr.whisper_model import WhisperASR
 from asr.audio_processor import AudioProcessor
 from postprocess.processor import TextProcessor
 from postprocess.cloud_llm import ProviderConfig, create_provider_from_env
@@ -108,9 +109,10 @@ def get_asr_model():
     """Get or create ASR model instance"""
     global asr_model
     if asr_model is None:
+        # Use MLX Whisper model
         config = AudioConfig(sample_rate=16000, channels=1, bit_depth=16)
-        asr_model = ASRModel(config=config)
-        asr_model.load_model()
+        asr_model = WhisperASR(config=config, model_size="base")
+        # Model will be lazy-loaded on first use
     return asr_model
 
 

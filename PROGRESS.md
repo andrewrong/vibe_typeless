@@ -54,6 +54,80 @@
   - Error handling with graceful fallback
   - 19 tests passing
 
+### Phase 3: Audio Processing & VAD ✅ COMPLETE
+
+- [x] **Audio Processor Module** (`src/asr/audio_processor.py`)
+  - Audio file loading (WAV, MP3, M4A, FLAC, OGG, AAC)
+  - Automatic conversion to 16kHz/16bit mono
+  - Audio chunking for streaming
+  - Silence detection (basic VAD)
+  - Silence removal
+  - Volume normalization
+  - 17 tests passing
+
+- [x] **Audio File Upload API** (`src/api/routes.py`)
+  - POST /api/postprocess/upload endpoint
+  - Support for multiple audio formats
+  - Automatic preprocessing pipeline
+  - Integrated transcription + post-processing
+  - Optional VAD (silence detection)
+  - File upload with multipart support
+
+### Phase 4: Documentation ✅ COMPLETE
+
+- [x] **API Documentation** (`docs/API.md`)
+  - Complete endpoint reference
+  - Usage examples (curl, Python, WebSocket)
+  - Configuration guide
+  - Performance considerations
+  - Troubleshooting section
+
+### Current Project Structure
+
+```
+typeless_2/
+├── .git/                          # Git repository
+├── .gitignore                     # Root ignore patterns
+├── CLAUDE.md                      # Project specification
+├── PROGRESS.md                    # This file
+├── README.md                      # Project overview
+│
+├── docs/
+│   └── API.md                      # API documentation
+│
+├── TypelessApp/                   # Swift application (BLOCKED)
+│   ├── Package.swift              # SPM configuration
+│   ├── Sources/
+│   │   └── TypelessApp/
+│   │       ├── App/               # Main app files
+│   │       ├── Core/              # Core modules
+│   │       └── Services/          # Service clients
+│   └── Tests/                     # Swift tests
+│
+└── PythonService/                 # Python inference service ✅ COMPLETE
+    ├── pyproject.toml             # uv project config
+    ├── uv.lock                    # Dependency lock
+    ├── src/
+    │   ├── api/
+    │   │   ├── server.py          # FastAPI server
+    │   │   └── routes.py          # Complete API routes
+    │   ├── asr/
+    │   │   ├── model.py           # ASR model (placeholder)
+    │   │   └── audio_processor.py # Audio processing utilities
+    │   └── postprocess/
+    │       ├── processor.py       # Rule-based text cleaning
+    │       └── cloud_llm.py       # Cloud LLM providers
+    ├── tests/
+    │   ├── test_asr.py            # Server tests
+    │   ├── test_asr_model.py      # ASR model tests
+    │   ├── test_api_routes.py     # API endpoint tests
+    │   ├── test_postprocess.py    # Post-processor tests
+    │   ├── test_cloud_llm.py      # Cloud LLM tests
+    │   └── test_audio_processor.py # Audio processing tests
+    ├── test_pipeline.py            # Pipeline integration test
+    ├── demo_pipeline.py            # Comprehensive demo
+    └── test_audio_upload.py         # Audio upload examples
+
 ### Current Project Structure
 
 ```
