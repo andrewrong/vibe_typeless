@@ -5,12 +5,13 @@ FastAPI endpoints for speech-to-text streaming
 
 import uuid
 from typing import Dict, Optional
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Body
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Body, UploadFile, File
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import numpy as np
 
 from asr.model import ASRModel, AudioConfig
+from asr.audio_processor import AudioProcessor
 from postprocess.processor import TextProcessor
 from postprocess.cloud_llm import ProviderConfig, create_provider_from_env
 
@@ -73,6 +74,24 @@ class ProcessConfig(BaseModel):
     custom_fillers: list[str] = []
     enable_corrections: bool = True
     enable_formatting: bool = True
+
+
+# Audio file processing models
+class AudioFileProcessRequest(BaseModel):
+    """Request for audio file processing"""
+    apply_postprocess: bool = True
+    remove_silence: bool = True
+    normalize_volume: bool = False
+    detect_silence_only: bool = False
+
+
+class AudioFileProcessResponse(BaseModel):
+    """Response for audio file processing"""
+    transcript: str
+    processed_transcript: Optional[str]
+    audio_metadata: Dict
+    processing_stats: Optional[Dict] = None
+    silence_regions: Optional[list] = None
 
 
 # Router
@@ -452,6 +471,105 @@ async def get_status():
             ]
         }
     }
+
+
+@postprocess_router.post("/upload", response_model=AudioFileProcessResponse)
+async def upload_audio_file(
+    file: UploadFile = File(...),
+    apply_postprocess: bool = True,
+    remove_silence: bool = False,
+    normalize_volume: bool = False,
+    detect_silence_only: bool = False
+):
+    """
+    Upload and process audio file
+
+    Args:
+        file: Audio file (WAV, MP3, M4A, etc.)
+        apply_postprocess: Whether to apply text post-processing
+        remove_silence: Whether to remove silence from audio
+        normalize_volume: Whether to normalize volume
+        detect_silence_only: Only detect silence, don't transcribe
+
+    Returns:
+        Transcription with optional post-processing
+    """
+    # Get file format from extension
+    file_format = file.filename.split('.')[-1] if '.' in file.filename else None
+
+    if file_format not in ['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio format: {file_format}. Supported: WAV, MP3, M4A, FLAC, OGG, AAC"
+        )
+
+    # Read file data
+    file_data = await file.read()
+
+    # Process audio
+    audio_processor = AudioProcessor()
+
+    try:
+        # Load and convert audio
+        audio_array, metadata = audio_processor.process_audio_file(
+            file_data=file_data,
+            file_format=file_format
+        )
+
+        # Apply preprocessing if requested
+        processing_stats = {}
+        silence_regions = None
+
+        if remove_silence:
+            original_length = len(audio_array)
+            audio_array = audio_processor.remove_silence(audio_array)
+            processing_stats["silence_removed_samples"] = original_length - len(audio_array)
+
+        if normalize_volume:
+            audio_array = audio_processor.normalize_volume(audio_array)
+            processing_stats["volume_normalized"] = True
+
+        if detect_silence_only:
+            # Only detect silence, don't transcribe
+            silence_regions = audio_processor.detect_silence(audio_array)
+            return AudioFileProcessResponse(
+                transcript="",
+                processed_transcript=None,
+                audio_metadata=metadata,
+                processing_stats=None,
+                silence_regions=[{
+                    "start_sample": int(start),
+                    "end_sample": int(end),
+                    "duration_ms": int((end - start) / metadata["sample_rate"] * 1000)
+                } for start, end in silence_regions]
+            )
+
+        # Transcribe
+        model = get_asr_model()
+        transcript = model.transcribe(
+            audio_array.astype(np.int16)
+        )
+
+        # Apply post-processing if requested
+        processed_transcript = None
+        if apply_postprocess and transcript:
+            result = processor.process(transcript)
+            processed_transcript = result.processed
+            processing_stats["postprocess_stats"] = result.stats
+
+        return AudioFileProcessResponse(
+            transcript=transcript,
+            processed_transcript=processed_transcript,
+            audio_metadata=metadata,
+            processing_stats=processing_stats if processing_stats else None,
+            silence_regions=silence_regions
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing audio file: {str(e)}"
+        )
 
 
 # Include postprocess router in the main router
