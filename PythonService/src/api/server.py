@@ -5,10 +5,10 @@ FastAPI server for handling ASR requests and text post-processing
 
 from fastapi import FastAPI
 try:
-    from .routes import router as asr_router
+    from .routes import router, postprocess_router
 except ImportError:
     # Fallback for running directly
-    from routes import router as asr_router
+    from routes import router, postprocess_router
 
 app = FastAPI(
     title="Typeless Service",
@@ -16,8 +16,9 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Include ASR routes
-app.include_router(asr_router)
+# Include routers
+app.include_router(router)
+app.include_router(postprocess_router)
 
 
 @app.get("/")

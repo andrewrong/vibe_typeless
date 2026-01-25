@@ -4,13 +4,15 @@ FastAPI endpoints for speech-to-text streaming
 """
 
 import uuid
-from typing import Dict
+from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import numpy as np
 
 from asr.model import ASRModel, AudioConfig
+from postprocess.processor import TextProcessor
+from postprocess.cloud_llm import ProviderConfig, create_provider_from_env
 
 
 # Request/Response models
@@ -46,6 +48,31 @@ class FileTranscribeResponse(BaseModel):
     transcript: str
     duration: float
     sample_rate: int
+
+
+# Post-processing request/response models
+class PostProcessRequest(BaseModel):
+    """Request for text post-processing"""
+    text: str
+    use_cloud_llm: bool = False
+    provider: Optional[str] = "claude"  # "claude" or "openai"
+
+
+class PostProcessResponse(BaseModel):
+    """Response for text post-processing"""
+    original: str
+    processed: str
+    stats: Dict
+    provider_used: Optional[str] = None
+
+
+class ProcessConfig(BaseModel):
+    """Post-processing configuration"""
+    mode: str  # "rules", "cloud", "hybrid"
+    provider: str = "claude"
+    custom_fillers: list[str] = []
+    enable_corrections: bool = True
+    enable_formatting: bool = True
 
 
 # Router
@@ -294,3 +321,139 @@ async def websocket_stream(websocket: WebSocket):
     finally:
         # Cleanup
         audio_chunks.clear()
+
+
+# Post-processing router
+postprocess_router = APIRouter(prefix="/api/postprocess", tags=["Post-Processing"])
+
+# Global processor instance
+processor = TextProcessor()
+
+
+@postprocess_router.post("/text", response_model=PostProcessResponse)
+async def process_text(request: PostProcessRequest):
+    """
+    Process text with rule-based or cloud LLM post-processing
+
+    Args:
+        request: Post-processing request with text and options
+
+    Returns:
+        Processed text with statistics
+    """
+    if not request.text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+    if request.use_cloud_llm:
+        # Use cloud LLM for processing
+        try:
+            provider = create_provider_from_env(provider=request.provider)
+            llm_response = provider.process_text(request.text)
+
+            if llm_response.has_error():
+                # Fallback to rule-based processing
+                result = processor.process(request.text)
+                return PostProcessResponse(
+                    original=request.text,
+                    processed=result.processed,
+                    stats=result.stats,
+                    provider_used="rules (fallback)"
+                )
+
+            return PostProcessResponse(
+                original=request.text,
+                processed=llm_response.text,
+                stats={
+                    "fillers_removed": 0,
+                    "duplicates_removed": 0,
+                    "corrections_applied": 0,
+                    "total_changes": len(request.text) - len(llm_response.text)
+                },
+                provider_used=llm_response.provider
+            )
+        except Exception as e:
+            # Fallback to rule-based processing on error
+            result = processor.process(request.text)
+            return PostProcessResponse(
+                original=request.text,
+                processed=result.processed,
+                stats=result.stats,
+                provider_used=f"rules (error: {str(e)})"
+            )
+    else:
+        # Use rule-based processing
+        result = processor.process(request.text)
+        return PostProcessResponse(
+            original=request.text,
+            processed=result.processed,
+            stats=result.stats,
+            provider_used="rules"
+        )
+
+
+@postprocess_router.post("/config")
+async def update_config(config: ProcessConfig):
+    """
+    Update post-processing configuration
+
+    Args:
+        config: New configuration
+
+    Returns:
+        Current configuration
+    """
+    # Update custom fillers
+    if config.custom_fillers:
+        processor.fillers.update(config.custom_fillers)
+
+    return {
+        "status": "Configuration updated",
+        "mode": config.mode,
+        "provider": config.provider,
+        "custom_fillers_count": len(config.custom_fillers)
+    }
+
+
+@postprocess_router.get("/config")
+async def get_config():
+    """
+    Get current post-processing configuration
+
+    Returns:
+        Current configuration
+    """
+    return {
+        "mode": "rules",
+        "provider": "claude",
+        "custom_fillers": list(processor.fillers),
+        "correction_phrases": list(processor.correction_phrases)
+    }
+
+
+@postprocess_router.get("/status")
+async def get_status():
+    """
+    Get post-processing service status
+
+    Returns:
+        Service status and capabilities
+    """
+    return {
+        "status": "running",
+        "capabilities": {
+            "rule_based": True,
+            "cloud_llm": True,
+            "providers": ["claude", "openai"],
+            "features": [
+                "filler_removal",
+                "duplicate_removal",
+                "self_correction",
+                "auto_formatting"
+            ]
+        }
+    }
+
+
+# Include postprocess router in the main router
+router.include_router(postprocess_router)
+
