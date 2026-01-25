@@ -12,6 +12,7 @@ import numpy as np
 
 from asr.model import ASRModel, AudioConfig
 from asr.whisper_model import WhisperASR
+from asr.model_config import model_manager, ModelSize, ASRModelConfig, ModelInfo
 from asr.audio_processor import AudioProcessor
 from postprocess.processor import TextProcessor
 from postprocess.cloud_llm import ProviderConfig, create_provider_from_env
@@ -108,11 +109,14 @@ asr_model = None
 def get_asr_model():
     """Get or create ASR model instance"""
     global asr_model
-    if asr_model is None:
-        # Use MLX Whisper model
+    if asr_model is None or not hasattr(asr_model, 'model_size') or asr_model.model_size != model_manager.current_model_size:
+        # Create new model with current configuration
         config = AudioConfig(sample_rate=16000, channels=1, bit_depth=16)
-        asr_model = WhisperASR(config=config, model_size="base")
-        # Model will be lazy-loaded on first use
+        asr_model = WhisperASR(
+            config=config,
+            model_size=model_manager.current_model_size
+        )
+        # Model will be lazy-loaded on first transcription
     return asr_model
 
 
@@ -264,6 +268,159 @@ async def transcribe_file(request: bytes = Body(..., media_type='application/oct
         transcript=transcript,
         duration=duration,
         sample_rate=model.config.sample_rate
+    )
+
+
+# Model Configuration endpoints
+class ModelConfigRequest(BaseModel):
+    """Request for updating model configuration"""
+    model_size: str = "base"
+    language: Optional[str] = None
+    fp16: bool = True
+
+
+class ModelConfigResponse(BaseModel):
+    """Response for model configuration"""
+    current_model: str
+    language: Optional[str]
+    fp16: bool
+    available_models: list[str]
+
+
+class ModelInfoResponse(BaseModel):
+    """Response for model information"""
+    size: str
+    params: str
+    download_size: str
+    ram_required: str
+    speed: str
+    description: str
+
+
+@router.get("/config", response_model=ModelConfigResponse)
+async def get_model_config():
+    """
+    Get current ASR model configuration
+
+    Returns:
+        Current model configuration and available models
+    """
+    config = model_manager.config
+
+    return ModelConfigResponse(
+        current_model=config.model_size,
+        language=config.language,
+        fp16=config.fp16,
+        available_models=ModelSize.all()
+    )
+
+
+@router.post("/config", response_model=ModelConfigResponse)
+async def set_model_config(request: ModelConfigRequest):
+    """
+    Update ASR model configuration
+
+    Args:
+        request: New model configuration
+
+    Returns:
+        Updated configuration
+
+    Raises:
+        ValueError: If model_size is invalid
+    """
+    try:
+        # Update model size
+        if request.model_size != model_manager.current_model_size:
+            model_manager.set_model_size(request.model_size)
+
+        # Update language if specified
+        if request.language is not None and request.language != model_manager.config.language:
+            model_manager.set_language(request.language)
+
+        # Update fp16 setting if different
+        if request.fp16 != model_manager.config.fp16:
+            model_manager.set_fp16(request.fp16)
+
+        config = model_manager.config
+
+        return ModelConfigResponse(
+            current_model=config.model_size,
+            language=config.language,
+            fp16=config.fp16,
+            available_models=ModelSize.all()
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/models")
+async def list_models():
+    """
+    Get information about all available models
+
+    Returns:
+        Dictionary of model information
+    """
+    models = model_manager.get_available_models()
+
+    return {
+        size: {
+            "params": info.params,
+            "download_size": info.download_size,
+            "ram_required": info.ram_required,
+            "speed": info.speed,
+            "description": info.description
+        }
+        for size, info in models.items()
+    }
+
+
+@router.get("/models/{model_size}", response_model=ModelInfoResponse)
+async def get_model_info(model_size: str):
+    """
+    Get information about a specific model
+
+    Args:
+        model_size: Model size to query
+
+    Returns:
+        Model information
+
+    Raises:
+        HTTPException: If model_size is invalid
+    """
+    try:
+        info = model_manager.get_model_info(model_size)
+        return ModelInfoResponse(
+            size=info.size,
+            params=info.params,
+            download_size=info.download_size,
+            ram_required=info.ram_required,
+            speed=info.speed,
+            description=info.description
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/reset")
+async def reset_model_config():
+    """
+    Reset model configuration to defaults
+
+    Returns:
+        Default configuration
+    """
+    model_manager.reset_to_defaults()
+    config = model_manager.config
+
+    return ModelConfigResponse(
+        current_model=config.model_size,
+        language=config.language,
+        fp16=config.fp16,
+        available_models=ModelSize.all()
     )
 
 
