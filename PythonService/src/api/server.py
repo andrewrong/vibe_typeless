@@ -4,12 +4,16 @@ FastAPI server for handling ASR requests and text post-processing
 """
 
 from fastapi import FastAPI
+from api.routes import router as asr_router
 
 app = FastAPI(
     title="Typeless Service",
     description="ASR and AI-powered text post-processing service",
     version="0.1.0"
 )
+
+# Include ASR routes
+app.include_router(asr_router)
 
 
 @app.get("/")
