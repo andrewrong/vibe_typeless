@@ -84,7 +84,7 @@ class AudioProcessor:
             audio = audio.set_frame_rate(self.config.sample_rate)
 
         # Convert to 16-bit PCM
-        audio = audio.sample_set_width(2)  # 2 bytes = 16-bit
+        audio = audio.set_sample_width(2)  # 2 bytes = 16-bit
 
         # Convert to numpy array
         samples = np.array(audio.get_array_of_samples())

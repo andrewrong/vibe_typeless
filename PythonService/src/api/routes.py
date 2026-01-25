@@ -546,11 +546,10 @@ async def upload_audio_file(
                 } for start, end in silence_regions]
             )
 
-        # Transcribe
+        # Transcribe (convert normalized float32 back to int16)
+        audio_int16 = (audio_array * 32767).astype(np.int16)
         model = get_asr_model()
-        transcript = model.transcribe(
-            audio_array.astype(np.int16)
-        )
+        transcript = model.transcribe(audio_int16)
 
         # Apply post-processing if requested
         processed_transcript = None
