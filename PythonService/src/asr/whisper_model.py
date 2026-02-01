@@ -127,7 +127,11 @@ class WhisperASR:
                 file_path,
                 path_or_hf_repo=model_id,
                 fp16=True,  # Use float16 for efficiency
-                language=language  # Specify language for better accuracy
+                language=language,  # Specify language for better accuracy
+                temperature=0.0,  # Use 0 for more deterministic output
+                compression_ratio_threshold=2.4,  # Filter out failures
+                no_speech_threshold=0.6,  # Filter out silence
+                condition_on_previous_text=False,  # Don't condition on previous text for fresh transcription
             )
 
             return result.get("text", "").strip()

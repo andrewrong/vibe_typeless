@@ -215,8 +215,20 @@ async def stop_session(session_id: str):
     # Handle empty audio chunks
     if session["audio_chunks"]:
         all_audio = np.concatenate(session["audio_chunks"])
-        # Use optimized transcribe with VAD
-        final_transcript = model.transcribe(all_audio, language="zh")
+
+        # Add 0.5 seconds of silence at the end to prevent truncation
+        # Whisper needs silence to properly complete the final word
+        sample_rate = model.config.sample_rate
+        silence_samples = int(sample_rate * 0.5)  # 0.5 seconds
+        silence = np.zeros(silence_samples, dtype=np.int16)
+        all_audio_with_silence = np.concatenate([all_audio, silence])
+
+        # Transcribe with silence padding
+        final_transcript = model.transcribe(all_audio_with_silence, language="zh")
+
+        # Add punctuation using text processor
+        if final_transcript:
+            final_transcript = processor.add_punctuation(final_transcript)
     else:
         final_transcript = ""
 

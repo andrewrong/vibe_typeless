@@ -196,6 +196,50 @@ class TextProcessor:
 
         return result
 
+    def add_punctuation(self, text: str) -> str:
+        """
+        Add basic punctuation to Chinese text using rule-based approach
+
+        Args:
+            text: Input text without punctuation
+
+        Returns:
+            Text with punctuation added
+        """
+        if not text:
+            return text
+
+        result = text
+
+        # Remove any existing punctuation first (to avoid duplicates)
+        result = re.sub(r'[，。！？、；：""''（）《》【】]', '', result)
+
+        # Split into sentences based on common pause words and patterns
+        # These words typically indicate a pause or sentence boundary
+        pause_words = ['然后', '接着', '之后', '所以', '但是', '不过', '而且', '另外',
+                      '还有', '最后', '首先', '其次', '再次', '总之', '因此']
+
+        # Split into segments
+        segments = result.split()
+
+        if not segments:
+            return result
+
+        # Add punctuation based on context
+        punctuated = []
+        for i, segment in enumerate(segments):
+            punctuated.append(segment)
+
+            # Add comma after pause words (but not at the end)
+            if segment in pause_words and i < len(segments) - 1:
+                punctuated.append('，')
+
+            # Add period at the end
+            if i == len(segments) - 1:
+                punctuated.append('。')
+
+        return ''.join(punctuated)
+
     def process(self, text: str) -> ProcessResult:
         """
         Apply full processing pipeline
