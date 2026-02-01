@@ -42,7 +42,7 @@ class WhisperASR:
     """
 
     # Available model sizes
-    MODEL_SIZES = ["tiny", "base", "small", "medium", "large"]
+    MODEL_SIZES = ["tiny", "base", "small", "medium", "large", "large-v3"]
 
     def __init__(
         self,
@@ -54,15 +54,23 @@ class WhisperASR:
 
         Args:
             config: Audio configuration (uses default if None)
-            model_size: Model size (tiny, base, small, medium, large)
+            model_size: Model size (tiny, base, small, medium, large, large-v3)
         """
-        if model_size not in self.MODEL_SIZES:
+        # Map large-v3 to large for compatibility
+        original_model_size = model_size
+        if model_size == "large-v3":
+            model_size = "large"
+
+        # Check if model_size is valid (use self.MODEL_SIZES)
+        valid_sizes = ["tiny", "base", "small", "medium", "large"]
+        if model_size not in valid_sizes:
             raise ValueError(
-                f"model_size must be one of {self.MODEL_SIZES}, got {model_size}"
+                f"model_size must be one of {valid_sizes}, got {model_size}"
             )
 
         self.config = config or AudioConfig()
         self.model_size = model_size
+        self._original_model_size = original_model_size  # Store original
         self._model_loaded = False
 
     def load_model(self):
@@ -97,12 +105,13 @@ class WhisperASR:
 
         return normalized
 
-    def transcribe_file(self, file_path: str) -> str:
+    def transcribe_file(self, file_path: str, language: str = "zh") -> str:
         """
         Transcribe audio file
 
         Args:
             file_path: Path to audio file
+            language: Language code (default: "zh" for Chinese)
 
         Returns:
             Transcribed text
@@ -117,7 +126,8 @@ class WhisperASR:
             result = mlx_whisper.transcribe(
                 file_path,
                 path_or_hf_repo=model_id,
-                fp16=True  # Use float16 for efficiency
+                fp16=True,  # Use float16 for efficiency
+                language=language  # Specify language for better accuracy
             )
 
             return result.get("text", "").strip()
@@ -130,24 +140,32 @@ class WhisperASR:
         except Exception as e:
             raise RuntimeError(f"Transcription failed: {e}") from e
 
-    def transcribe(self, audio: np.ndarray) -> str:
+    def transcribe(self, audio: np.ndarray, language: str = "zh") -> str:
         """
         Transcribe audio array
 
         Args:
             audio: Audio data as numpy array (int16 or float32)
+            language: Language code (default: "zh" for Chinese)
 
         Returns:
             Transcribed text
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         # Validate audio
         if len(audio) == 0:
+            logger.warning("Empty audio array")
             return ""
 
         # Check minimum audio length (at least 0.1 seconds)
         min_samples = int(self.config.sample_rate * 0.1)
         if len(audio) < min_samples:
+            logger.warning(f"Audio too short: {len(audio)} samples < {min_samples}")
             return ""
+
+        logger.info(f"Transcribing {len(audio)} samples, dtype={audio.dtype}, range=[{audio.min()}, {audio.max()}]")
 
         # Save to temporary file
         with tempfile.NamedTemporaryFile(
@@ -160,9 +178,11 @@ class WhisperASR:
         try:
             # Convert audio to correct format
             preprocessed = self.preprocess_audio(audio)
+            logger.info(f"Preprocessed: shape={preprocessed.shape}, dtype={preprocessed.dtype}, range=[{preprocessed.min()}, {preprocessed.max()}]")
 
             # Convert back to int16 for WAV file
             audio_int16 = (preprocessed * 32767).astype(np.int16)
+            logger.info(f"Int16: shape={audio_int16.shape}, dtype={audio_int16.dtype}, range=[{audio_int16.min()}, {audio_int16.max()}]")
 
             # Write WAV file manually
             import wave
@@ -176,10 +196,15 @@ class WhisperASR:
                 # Write audio data
                 wav_file.writeframes(audio_int16.tobytes())
 
-            # Transcribe
-            return self.transcribe_file(temp_path)
+            logger.info(f"WAV file written to {temp_path}")
+
+            # Transcribe with language specified
+            result = self.transcribe_file(temp_path, language=language)
+            logger.info(f"Transcription result: '{result}'")
+            return result
 
         except Exception as e:
+            logger.error(f"Transcription failed: {e}", exc_info=True)
             raise RuntimeError(f"Transcription failed: {e}") from e
 
         finally:
@@ -189,12 +214,13 @@ class WhisperASR:
             except:
                 pass
 
-    def transcribe_stream(self, audio_chunks: list[np.ndarray]) -> str:
+    def transcribe_stream(self, audio_chunks: list[np.ndarray], language: str = "zh") -> str:
         """
         Transcribe streaming audio chunks
 
         Args:
             audio_chunks: List of audio chunks
+            language: Language code (default: "zh" for Chinese)
 
         Returns:
             Combined transcription
@@ -206,8 +232,8 @@ class WhisperASR:
         # Combine chunks
         combined_audio = np.concatenate(audio_chunks)
 
-        # Transcribe combined audio
-        return self.transcribe(combined_audio)
+        # Transcribe combined audio with language
+        return self.transcribe(combined_audio, language=language)
 
     @property
     def is_loaded(self) -> bool:

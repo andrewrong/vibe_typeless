@@ -4,18 +4,22 @@ FastAPI endpoints for speech-to-text streaming
 """
 
 import uuid
-from typing import Dict, Optional
+import logging
+from typing import Dict, Optional, List
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Body, UploadFile, File
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import numpy as np
 
-from asr.model import ASRModel, AudioConfig
-from asr.whisper_model import WhisperASR
-from asr.model_config import model_manager, ModelSize, ASRModelConfig, ModelInfo
-from asr.audio_processor import AudioProcessor
-from postprocess.processor import TextProcessor
-from postprocess.cloud_llm import ProviderConfig, create_provider_from_env
+from src.asr.model import ASRModel, AudioConfig
+from src.asr.whisper_model import WhisperASR
+from src.asr.optimized_whisper import OptimizedWhisperASR
+from src.asr.model_config import model_manager, ModelSize, ASRModelConfig, ModelInfo
+from src.asr.audio_processor import AudioProcessor
+from src.postprocess.processor import TextProcessor
+from src.postprocess.cloud_llm import ProviderConfig, create_provider_from_env
+from src.api.websocket_stream import streamer
+from src.api.job_queue import job_queue, JobInfo
 
 
 # Request/Response models
@@ -110,13 +114,14 @@ def get_asr_model():
     """Get or create ASR model instance"""
     global asr_model
     if asr_model is None or not hasattr(asr_model, 'model_size') or asr_model.model_size != model_manager.current_model_size:
-        # Create new model with current configuration
+        # Use original WhisperASR for reliability
         config = AudioConfig(sample_rate=16000, channels=1, bit_depth=16)
         asr_model = WhisperASR(
             config=config,
             model_size=model_manager.current_model_size
         )
-        # Model will be lazy-loaded on first transcription
+        logger = logging.getLogger(__name__)
+        logger.info(f"Created WhisperASR with model_size={model_manager.current_model_size}")
     return asr_model
 
 
@@ -154,29 +159,35 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
         request: Raw audio data (bytes)
 
     Returns:
-        Partial transcription result
+        Partial transcription result (empty during recording)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
     session = sessions[session_id]
 
-    # Convert bytes to numpy array
-    audio_array = np.frombuffer(request, dtype=np.int16)
+    # Log received data size
+    logger.info(f"Received audio chunk: {len(request)} bytes for session {session_id[:8]}...")
 
-    # Store audio chunk
+    # Convert bytes to numpy array
+    try:
+        audio_array = np.frombuffer(request, dtype=np.int16)
+        logger.info(f"Converted to numpy array: {len(audio_array)} samples")
+    except Exception as e:
+        logger.error(f"Failed to convert audio data: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid audio data: {e}")
+
+    # Store audio chunk (don't transcribe yet - wait for stop)
     session["audio_chunks"].append(audio_array)
     session["chunks_received"] += 1
+    logger.info(f"Session {session_id[:8]}... has {session['chunks_received']} chunks, total audio: {sum(len(c) for c in session['audio_chunks'])} samples")
 
-    # Get ASR model and transcribe
-    model = get_asr_model()
-    transcript = model.transcribe(audio_array)
-
-    # Update partial transcript
-    session["partial_transcript"] = transcript
-
+    # Return empty partial transcript - we'll transcribe at the end
     return AudioTranscriptResponse(
-        partial_transcript=transcript,
+        partial_transcript="",
         is_final=False
     )
 
@@ -204,7 +215,8 @@ async def stop_session(session_id: str):
     # Handle empty audio chunks
     if session["audio_chunks"]:
         all_audio = np.concatenate(session["audio_chunks"])
-        final_transcript = model.transcribe(all_audio)
+        # Use optimized transcribe with VAD
+        final_transcript = model.transcribe(all_audio, language="zh")
     else:
         final_transcript = ""
 
@@ -501,6 +513,29 @@ async def websocket_stream(websocket: WebSocket):
         audio_chunks.clear()
 
 
+@router.websocket("/stream-progress")
+async def websocket_stream_with_progress(websocket: WebSocket):
+    """
+    Enhanced WebSocket endpoint for streaming with progress updates
+
+    Protocol:
+    Client sends:
+    - {"action": "start"} - Start streaming session
+    - <binary audio data> - Send audio chunks
+    - {"action": "process", "strategy": "hybrid"} - Process with long audio
+    - {"action": "stop"} - Stop session
+
+    Server sends:
+    - {"type": "started", "session_id": "..."}
+    - {"type": "chunk_received", "chunk_number": N}
+    - {"type": "progress", "current_segment": N, "total_segments": M, "progress_percent": 50.0}
+    - {"type": "segment_complete", "transcript_part": "...", ...}
+    - {"type": "complete", "final_transcript": "...", ...}
+    - {"type": "error", "message": "..."}
+    """
+    await streamer.handle_streaming_session(websocket)
+
+
 # Post-processing router
 postprocess_router = APIRouter(prefix="/api/postprocess", tags=["Post-Processing"])
 
@@ -641,7 +676,7 @@ async def upload_audio_file(
     detect_silence_only: bool = False
 ):
     """
-    Upload and process audio file
+    Upload and process audio file (for short audio < 30s)
 
     Args:
         file: Audio file (WAV, MP3, M4A, etc.)
@@ -728,6 +763,428 @@ async def upload_audio_file(
             status_code=500,
             detail=f"Error processing audio file: {str(e)}"
         )
+
+
+class LongAudioProcessRequest(BaseModel):
+    """Request for long audio file processing"""
+    strategy: str = "hybrid"  # fixed, vad, hybrid
+    merge_strategy: str = "simple"  # simple, overlap, smart
+    apply_postprocess: bool = True
+
+
+class LongAudioProcessResponse(BaseModel):
+    """Response for long audio file processing"""
+    transcript: str
+    processed_transcript: Optional[str]
+    audio_metadata: Dict
+    processing_stats: Dict
+    segments: List[Dict]
+
+
+@postprocess_router.post("/upload-long", response_model=LongAudioProcessResponse)
+async def upload_long_audio(
+    file: UploadFile = File(...),
+    strategy: str = "hybrid",
+    merge_strategy: str = "simple",
+    apply_postprocess: bool = True
+):
+    """
+    Upload and process long audio file (> 30 seconds)
+
+    Uses intelligent chunking to handle audio longer than Whisper's 30-second limit.
+
+    Args:
+        file: Audio file (WAV, MP3, M4A, etc.)
+        strategy: Chunking strategy - "fixed" (30s chunks), "vad" (speech detection), or "hybrid" (VAD + fixed)
+        merge_strategy: How to merge transcripts - "simple", "overlap", or "smart"
+        apply_postprocess: Whether to apply text post-processing
+
+    Returns:
+        Full transcription with segment information
+    """
+    from asr.long_audio import LongAudioProcessor, process_long_audio
+
+    # Get file format from extension
+    file_format = file.filename.split('.')[-1] if '.' in file.filename else None
+
+    if file_format not in ['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio format: {file_format}. Supported: WAV, MP3, M4A, FLAC, OGG, AAC"
+        )
+
+    # Read file data
+    file_data = await file.read()
+
+    # Save to temporary file
+    import tempfile
+    import os
+
+    with tempfile.NamedTemporaryFile(suffix=f".{file_format}", delete=False) as tmp_file:
+        tmp_file.write(file_data)
+        tmp_file_path = tmp_file.name
+
+    try:
+        # Transcribe function wrapper
+        def transcribe_fn(audio_int16):
+            model = get_asr_model()
+            return model.transcribe(audio_int16)
+
+        # Process long audio
+        full_transcript, metadata = process_long_audio(
+            audio_path=tmp_file_path,
+            transcribe_fn=transcribe_fn,
+            strategy=strategy,
+            merge_strategy=merge_strategy
+        )
+
+        # Apply post-processing if requested
+        processed_transcript = None
+        postprocess_stats = None
+        if apply_postprocess and full_transcript:
+            result = processor.process(full_transcript)
+            processed_transcript = result.processed
+            postprocess_stats = result.stats
+
+        return LongAudioProcessResponse(
+            transcript=full_transcript,
+            processed_transcript=processed_transcript,
+            audio_metadata=metadata,
+            processing_stats={
+                "num_segments": metadata.get("num_segments", 0),
+                "strategy": metadata.get("strategy", strategy),
+                "merge_strategy": metadata.get("merge_strategy", merge_strategy),
+                "postprocess_stats": postprocess_stats
+            },
+            segments=[{
+                "segment_index": i,
+                "duration": metadata.get("segment_durations", [])[i] if i < len(metadata.get("segment_durations", [])) else 0
+            } for i in range(metadata.get("num_segments", 0))]
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing long audio file: {str(e)}"
+        )
+    finally:
+        # Clean up temp file
+        if os.path.exists(tmp_file_path):
+            os.unlink(tmp_file_path)
+
+
+# Batch transcription models
+class BatchTranscriptionItem(BaseModel):
+    """Result for a single file in batch"""
+    filename: str
+    success: bool
+    transcript: Optional[str] = None
+    processed_transcript: Optional[str] = None
+    duration: Optional[float] = None
+    error: Optional[str] = None
+
+
+class BatchTranscriptionResponse(BaseModel):
+    """Response for batch transcription"""
+    total_files: int
+    successful: int
+    failed: int
+    results: List[BatchTranscriptionItem]
+    total_duration: float
+    processing_time: float
+
+
+@postprocess_router.post("/batch-transcribe", response_model=BatchTranscriptionResponse)
+async def batch_transcribe(
+    files: List[UploadFile] = File(...),
+    apply_postprocess: bool = True,
+    strategy: str = "auto"
+):
+    """
+    Transcribe multiple audio files in a single request
+
+    Args:
+        files: List of audio files (WAV, MP3, M4A, etc.)
+        apply_postprocess: Whether to apply text post-processing
+        strategy: "auto" (use long audio for >30s), "short" (force short), "long" (force long)
+
+    Returns:
+        Batch transcription results with individual file results
+    """
+    import time
+    import tempfile
+    start_time = time.time()
+
+    results = []
+    successful = 0
+    failed = 0
+    total_duration = 0.0
+
+    audio_processor = AudioProcessor()
+
+    for file in files:
+        file_result = BatchTranscriptionItem(
+            filename=file.filename,
+            success=False
+        )
+
+        try:
+            # Get file format
+            file_format = file.filename.split('.')[-1] if '.' in file.filename else None
+
+            if file_format not in ['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac']:
+                file_result.error = f"Unsupported format: {file_format}"
+                failed += 1
+                results.append(file_result)
+                continue
+
+            # Read file data
+            file_data = await file.read()
+
+            # Save to temp file
+            with tempfile.NamedTemporaryFile(suffix=f".{file_format}", delete=False) as tmp_file:
+                tmp_file.write(file_data)
+                tmp_file_path = tmp_file.name
+
+            try:
+                # Load and convert audio
+                audio_array, metadata = audio_processor.process_audio_file(
+                    file_data=file_data,
+                    file_format=file_format
+                )
+
+                duration = metadata.get("duration", 0)
+                total_duration += duration
+
+                # Decide which strategy to use
+                use_long_audio = (
+                    strategy == "long" or
+                    (strategy == "auto" and duration > 30)
+                )
+
+                # Convert to int16
+                audio_int16 = (audio_array * 32767).astype(np.int16)
+
+                # Transcribe
+                model = get_asr_model()
+
+                if use_long_audio:
+                    # Use long audio processing
+                    from asr.long_audio import process_long_audio
+
+                    def transcribe_fn(audio):
+                        return model.transcribe(audio)
+
+                    transcript, _ = process_long_audio(
+                        audio_path=tmp_file_path,
+                        transcribe_fn=transcribe_fn,
+                        strategy="hybrid"
+                    )
+                else:
+                    # Simple transcription
+                    transcript = model.transcribe(audio_int16)
+
+                # Apply post-processing
+                processed_transcript = None
+                if apply_postprocess and transcript:
+                    result = processor.process(transcript)
+                    processed_transcript = result.processed
+
+                # Update result
+                file_result.success = True
+                file_result.transcript = transcript
+                file_result.processed_transcript = processed_transcript
+                file_result.duration = duration
+
+                successful += 1
+
+            finally:
+                # Clean up temp file
+                import os
+                if os.path.exists(tmp_file_path):
+                    os.unlink(tmp_file_path)
+
+        except Exception as e:
+            file_result.error = str(e)
+            failed += 1
+
+        results.append(file_result)
+
+    processing_time = time.time() - start_time
+
+    return BatchTranscriptionResponse(
+        total_files=len(files),
+        successful=successful,
+        failed=failed,
+        results=results,
+        total_duration=total_duration,
+        processing_time=processing_time
+    )
+
+
+# Job queue router
+job_router = APIRouter(prefix="/api/jobs", tags=["Job Queue"])
+
+
+class JobSubmitResponse(BaseModel):
+    """Response for job submission"""
+    job_id: str
+    status: str
+    message: str
+
+
+@job_router.post("/submit", response_model=JobSubmitResponse)
+async def submit_job(
+    file: UploadFile = File(...),
+    strategy: str = "hybrid",
+    merge_strategy: str = "simple",
+    apply_postprocess: bool = True
+):
+    """
+    Submit a transcription job to the queue
+
+    Returns immediately with a job_id. Use GET /api/jobs/{job_id} to check status.
+
+    Args:
+        file: Audio file (WAV, MP3, M4A, etc.)
+        strategy: Chunking strategy
+        merge_strategy: Transcript merging strategy
+        apply_postprocess: Whether to apply text post-processing
+
+    Returns:
+        Job submission response with job_id
+    """
+    import tempfile
+
+    # Read file data
+    file_data = await file.read()
+    file_format = file.filename.split('.')[-1] if '.' in file.filename else None
+
+    # Save to temp file
+    with tempfile.NamedTemporaryFile(suffix=f".{file_format}", delete=False) as tmp_file:
+        tmp_file.write(file_data)
+        tmp_file_path = tmp_file.name
+
+    # Define the task
+    async def process_task():
+        from asr.long_audio import process_long_audio
+
+        def transcribe_fn(audio):
+            model = get_asr_model()
+            return model.transcribe(audio)
+
+        transcript, metadata = process_long_audio(
+            audio_path=tmp_file_path,
+            transcribe_fn=transcribe_fn,
+            strategy=strategy,
+            merge_strategy=merge_strategy
+        )
+
+        # Apply post-processing
+        processed_transcript = None
+        if apply_postprocess and transcript:
+            result = processor.process(transcript)
+            processed_transcript = result.processed
+
+        return {
+            "transcript": transcript,
+            "processed_transcript": processed_transcript,
+            "metadata": metadata
+        }
+
+    # Submit to queue
+    job_id = await job_queue.submit(
+        task=process_task,
+        metadata={
+            "filename": file.filename,
+            "strategy": strategy,
+            "merge_strategy": merge_strategy
+        }
+    )
+
+    return JobSubmitResponse(
+        job_id=job_id,
+        status="submitted",
+        message="Job submitted successfully. Use GET /api/jobs/{job_id} to check status."
+    )
+
+
+@job_router.get("/")
+async def list_jobs(
+    status: Optional[str] = None,
+    limit: int = 100
+):
+    """
+    List all jobs
+
+    Args:
+        status: Filter by status (pending, processing, completed, failed, cancelled)
+        limit: Maximum number of jobs to return
+
+    Returns:
+        List of job information
+    """
+    from api.job_queue import JobStatus
+
+    job_status = JobStatus(status) if status else None
+    jobs = job_queue.list_jobs(status=job_status, limit=limit)
+
+    return {
+        "jobs": [JobInfo.from_job(j) for j in jobs],
+        "count": len(jobs)
+    }
+
+
+@job_router.get("/stats")
+async def get_queue_stats():
+    """
+    Get queue statistics
+
+    Returns:
+        Queue statistics including job counts and concurrency limits
+    """
+    return job_queue.get_stats()
+
+
+@job_router.get("/{job_id}", response_model=JobInfo)
+async def get_job_status(job_id: str):
+    """
+    Get job status and results
+
+    Args:
+        job_id: Job identifier
+
+    Returns:
+        Job information including status, progress, and results if completed
+    """
+    job = job_queue.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return JobInfo.from_job(job)
+
+
+@job_router.post("/{job_id}/cancel")
+async def cancel_job(job_id: str):
+    """
+    Cancel a pending job
+
+    Args:
+        job_id: Job identifier
+
+    Returns:
+        Cancellation result
+    """
+    success = job_queue.cancel_job(job_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Job cannot be cancelled (may be already completed or running)"
+        )
+
+    return {"success": True, "message": "Job cancelled successfully"}
 
 
 # Include postprocess router in the main router

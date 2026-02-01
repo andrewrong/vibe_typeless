@@ -1,18 +1,23 @@
-import XCTest
+import Testing
 @testable import TypelessApp
 
-final class TypelessAppTests: XCTestCase {
-    func testApplicationCanBeInitialized() {
-        // Basic test to verify the application module can be imported
-        // This test will pass once the TypelessApp module is properly configured
-        let appName = "Typeless"
-        XCTAssertEqual(appName, "Typeless")
+@Suite("TypelessApp Tests")
+struct TypelessAppTests {
+
+    @Test("Application name is correct")
+    func applicationName() async throws {
+        #expect("Typeless" == "Typeless")
     }
 
-    func testApplicationStartup() {
-        // Test that the application can start without crashing
-        // This is a placeholder for future startup logic testing
-        let canStart = true
-        XCTAssertTrue(canStart)
+    @Test("Basic math works")
+    func basicMath() async throws {
+        #expect(2 + 2 == 4)
+        #expect(10 / 2 == 5)
+    }
+
+    @Test("Boolean logic works")
+    func booleanLogic() async throws {
+        #expect(true == true)
+        #expect(false == false)
     }
 }

@@ -14,7 +14,7 @@ class ModelSize(str, Enum):
     BASE = "base"
     SMALL = "small"
     MEDIUM = "medium"
-    LARGE = "large"
+    LARGE_V3 = "large-v3"
 
     @classmethod
     def all(cls) -> List[str]:
@@ -28,7 +28,7 @@ class ModelSize(str, Enum):
             "base": "Base (74M) - Balanced speed and accuracy",
             "small": "Small (244M) - Better accuracy, still fast",
             "medium": "Medium (769M) - High accuracy, slower",
-            "large": "Large (1.5B) - Best accuracy, slowest"
+            "large-v3": "Large-v3 (1.5B) - Best accuracy, slowest, improved v3"
         }
         return descriptions.get(self.value, "Unknown")
 
@@ -36,16 +36,17 @@ class ModelSize(str, Enum):
 @dataclass
 class ASRModelConfig:
     """ASR Model Configuration"""
-    model_size: str = ModelSize.BASE.value
+    model_size: str = "medium"  # Back to medium - stable and accurate
     language: Optional[str] = None  # None = auto-detect
     fp16: bool = True  # Use fp16 for memory efficiency
 
     def __post_init__(self):
-        # Validate model size
-        if self.model_size not in ModelSize.all():
+        # Validate model size (allow both large and large-v3)
+        valid_sizes = ["tiny", "base", "small", "medium", "large", "large-v3"]
+        if self.model_size not in valid_sizes:
             raise ValueError(
                 f"Invalid model_size: {self.model_size}. "
-                f"Must be one of {ModelSize.all()}"
+                f"Must be one of {valid_sizes}"
             )
 
 
@@ -95,13 +96,13 @@ class ModelInfo:
                 speed="🐢 Moderate",
                 description="High accuracy, slower"
             ),
-            "large": ModelInfo(
-                size="large",
+            "large-v3": ModelInfo(
+                size="large-v3",
                 params="1.5B",
                 download_size="~3GB",
                 ram_required="10GB",
                 speed="🐌 Slow",
-                description="Best accuracy, slowest"
+                description="Best accuracy, slowest, improved v3"
             )
         }
 

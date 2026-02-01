@@ -9,7 +9,7 @@ from typing import Tuple, Optional
 from pydub import AudioSegment
 from pydub.utils import make_chunks
 
-from asr.model import AudioConfig
+from .model import AudioConfig
 
 
 class AudioProcessor:

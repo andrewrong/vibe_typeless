@@ -4,21 +4,27 @@ FastAPI server for handling ASR requests and text post-processing
 """
 
 from fastapi import FastAPI
-try:
-    from .routes import router, postprocess_router
-except ImportError:
-    # Fallback for running directly
-    from routes import router, postprocess_router
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+# Use relative imports
+from .routes import router, postprocess_router, job_router
+from .rate_limit import limiter
 
 app = FastAPI(
     title="Typeless Service",
     description="ASR and AI-powered text post-processing service",
-    version="0.1.0"
+    version="0.2.0"
 )
+
+# Set up rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include routers
 app.include_router(router)
 app.include_router(postprocess_router)
+app.include_router(job_router)
 
 
 @app.get("/")
