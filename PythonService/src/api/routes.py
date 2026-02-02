@@ -276,11 +276,43 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
     # Store audio chunk (don't transcribe yet - wait for stop)
     session["audio_chunks"].append(audio_array)
     session["chunks_received"] += 1
+
+    # Real-time preview: transcribe every 5 chunks
+    CHUNKS_FOR_PREVIEW = 5
+    partial_transcript = ""
+
+    if session['chunks_received'] % CHUNKS_FOR_PREVIEW == 0:
+        logger.info(f"🔄 Real-time preview: transcribing {session['chunks_received']} chunks...")
+
+        # Combine all chunks so far and transcribe
+        all_audio = np.concatenate(session["audio_chunks"])
+
+        try:
+            # Apply audio pipeline for preview (faster, no VAD for speed)
+            model = get_asr_model()
+
+            # For preview, skip VAD to save time
+            from src.asr.audio_pipeline import AudioEnhancer
+            enhancer = AudioEnhancer()
+            enhanced = enhancer.enhance(all_audio.astype(np.float32) / 32768.0)
+            enhanced_int16 = (enhanced * 32767).astype(np.int16)
+
+            # Transcribe
+            partial_transcript = model.transcribe(enhanced_int16, language="zh")
+
+            # Apply dictionary for preview
+            if partial_transcript:
+                partial_transcript = personal_dictionary.apply(partial_transcript)
+
+            logger.info(f"📝 Preview transcript: '{partial_transcript[:50]}...'")
+
+        except Exception as e:
+            logger.error(f"Preview transcription failed: {e}")
+
     logger.info(f"Session {session_id[:8]}... has {session['chunks_received']} chunks, total audio: {sum(len(c) for c in session['audio_chunks'])} samples")
 
-    # Return empty partial transcript - we'll transcribe at the end
     return AudioTranscriptResponse(
-        partial_transcript="",
+        partial_transcript=partial_transcript,
         is_final=False
     )
 
