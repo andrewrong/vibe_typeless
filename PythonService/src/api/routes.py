@@ -218,6 +218,9 @@ async def start_session(request: SessionStartRequest = None):
     Returns:
         Session ID and status
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     session_id = str(uuid.uuid4())
 
     sessions[session_id] = {
@@ -293,6 +296,9 @@ async def stop_session(session_id: str):
     Returns:
         Final transcription result
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -315,9 +321,6 @@ async def stop_session(session_id: str):
         all_audio = np.concatenate(session["audio_chunks"])
 
         # Apply audio processing pipeline (VAD → Enhancement → Segmentation)
-        import logging
-        logger = logging.getLogger(__name__)
-
         logger.info("🎛️ Applying audio processing pipeline...")
 
         # Create audio pipeline
