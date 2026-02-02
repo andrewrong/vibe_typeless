@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import AppKit
 import os.log
 
 /// Background recording manager
@@ -12,6 +13,7 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
     private var asrService: ASRService
     private var textInjector: TextInjector
     private var powerMode: PowerModeManager
+    private var previewWindow: PreviewWindow?
     private var sessionId: String?
 
     private(set) var isRecording = false
@@ -24,6 +26,7 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         self.asrService = ASRService()
         self.textInjector = TextInjector()
         self.powerMode = PowerModeManager()
+        self.previewWindow = PreviewWindow()
         self.audioRecorder = AudioRecorder()
         self.audioRecorder?.delegate = self
     }
@@ -45,15 +48,19 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
 
         do {
             // Detect current app for Power Mode
-            let config = powerMode.detectAndUpdate()
+            _ = powerMode.detectAndUpdate()
             NSLog("📱 [Background] Power Mode: \(powerMode.getCategory())")
 
             // Start ASR session
-            sessionId = try await asrService.startSession(appInfo: getAppInfo())
-            NSLog("✅ [Background] Session started: \(sessionId ?? "nil")")
+            let appInfo = getAppInfo()
+            sessionId = try await asrService.startSession(appInfo: appInfo)
+            NSLog("✅ [Background] Session started")
 
             // Start audio recorder
-            try await audioRecorder?.startRecording()
+            guard let recorder = audioRecorder else {
+                throw NSError(domain: "BackgroundRecording", code: -1, userInfo: [NSLocalizedDescriptionKey: "No audio recorder available"])
+            }
+            try await recorder.startRecording()
             isRecording = true
             NSLog("✅ [Background] Recording started")
         } catch {
@@ -106,6 +113,9 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             NSLog("❌ [Background] Failed to stop session: \(error)")
         }
 
+        // Hide preview window
+        previewWindow?.hide()
+
         self.sessionId = nil
     }
 
@@ -120,9 +130,11 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
 
             do {
                 let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
-                // Optionally log partial transcript
+
+                // Update preview window with partial transcript
                 if !transcript.isEmpty {
-                    NSLog("📝 [Background] Partial: \(transcript)")
+                    NSLog("📝 [Background] Preview: \(transcript.prefix(50))...")
+                    previewWindow?.updateText(transcript)
                 }
             } catch {
                 NSLog("❌ [Background] Failed to send audio: \(error.localizedDescription)")

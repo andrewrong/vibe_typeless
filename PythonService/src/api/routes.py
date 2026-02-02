@@ -95,6 +95,7 @@ from src.asr.audio_pipeline import AudioPipeline
 from src.postprocess.processor import TextProcessor
 from src.postprocess.dictionary import personal_dictionary
 from src.postprocess.cloud_llm import ProviderConfig, create_provider_from_env
+from src.postprocess.ai_processor import AIPostProcessor, PostProcessRequest as AIRequest, PostProcessResponse as AIResponse
 from src.api.websocket_stream import streamer
 from src.api.job_queue import job_queue, JobInfo
 
@@ -193,18 +194,20 @@ asr_model = None
 
 
 def get_asr_model():
-    """Get or create ASR model instance"""
+    """
+    Get or create ASR model instance
+
+    Model selection is controlled in src/asr/__init__.py
+    Change MODEL_TYPE there to switch between Whisper and VibeVoice
+    """
     global asr_model
-    if asr_model is None or not hasattr(asr_model, 'model_size') or asr_model.model_size != model_manager.current_model_size:
-        # Use original WhisperASR for reliability
-        config = AudioConfig(sample_rate=16000, channels=1, bit_depth=16)
-        asr_model = WhisperASR(
-            config=config,
-            model_size=model_manager.current_model_size
-        )
-        logger = logging.getLogger(__name__)
-        logger.info(f"Created WhisperASR with model_size={model_manager.current_model_size}")
-    return asr_model
+
+    # Import from factory
+    from src.asr import get_asr_model as get_model
+
+    # Get model from factory (creates new instance each time for now)
+    # Could be optimized to cache if needed
+    return get_model()
 
 
 @router.post("/start", response_model=SessionStartResponse)
@@ -300,8 +303,11 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
             # Transcribe
             partial_transcript = model.transcribe(enhanced_int16, language="zh")
 
-            # Apply dictionary for preview
+            # Apply processing for preview (punctuation + dictionary)
             if partial_transcript:
+                # Apply intelligent punctuation correction
+                partial_transcript = processor.punctuation_corrector.correct(partial_transcript)
+                # Apply dictionary for technical terms
                 partial_transcript = personal_dictionary.apply(partial_transcript)
 
             logger.info(f"📝 Preview transcript: '{partial_transcript[:50]}...'")
@@ -379,16 +385,61 @@ async def stop_session(session_id: str):
 
         # Combine transcripts
         final_transcript = " ".join(transcripts).strip()
+        logger.info(f"📝 Combined transcript ({len(final_transcript)} chars): '{final_transcript}'")
 
         # Apply Power Mode configuration
         if final_transcript:
-            # Apply punctuation based on Power Mode
+            # Apply intelligent punctuation correction
             if power_config['add_punctuation']:
-                final_transcript = processor.add_punctuation(final_transcript)
+                logger.info(f"🔧 Applying punctuation correction ({len(final_transcript)} chars)...")
+                logger.info(f"   Processor has punctuation_corrector: {hasattr(processor, 'punctuation_corrector')}")
+                if hasattr(processor, 'punctuation_corrector'):
+                    before_punct = final_transcript
+                    final_transcript = processor.punctuation_corrector.correct(final_transcript)
+                    logger.info(f"✅ After punctuation ({len(final_transcript)} chars): '{final_transcript}'")
+                    if len(final_transcript) < len(before_punct):
+                        logger.error(f"⚠️ Text got shorter! Before: {len(before_punct)}, After: {len(final_transcript)}")
+                else:
+                    logger.warning("⚠️ processor.punctuation_corrector not found, skipping punctuation correction")
 
             # Apply personal dictionary (especially for technical terms)
             if power_config['technical_terms']:
+                logger.info(f"🔧 Applying dictionary ({len(final_transcript)} chars)...")
+                before_dict = final_transcript
                 final_transcript = personal_dictionary.apply(final_transcript)
+                logger.info(f"✅ After dictionary ({len(final_transcript)} chars): '{final_transcript}'")
+                if len(final_transcript) < len(before_dict):
+                    logger.error(f"⚠️ Text got shorter! Before: {len(before_dict)}, After: {len(final_transcript)}")
+
+            # Apply AI post-processing for text enhancement (NEW)
+            # Check if AI processing is enabled via .env file
+            from src.config import settings
+
+            if settings.ENABLE_AI_POSTPROCESS and len(final_transcript) > 10:  # Only AI process if text > 10 chars
+                try:
+                    logger.info(f"🤖 Applying AI post-processing ({len(final_transcript)} chars)...")
+
+                    # Create AI processor
+                    ai_processor = AIPostProcessor()
+
+                    # Create request (use provider from .env)
+                    ai_request = AIRequest(
+                        text=final_transcript,
+                        provider=settings.AI_PROVIDER,  # From .env: openai, gemini, ollama
+                        model=None  # Use default model from .env
+                    )
+
+                    # Process with AI
+                    ai_response = await ai_processor.process(ai_request)
+
+                    final_transcript = ai_response.processed
+                    logger.info(f"✅ AI processing complete ({len(final_transcript)} chars)")
+                    logger.debug(f"   AI processed: '{final_transcript[:100]}...'")
+
+                except Exception as e:
+                    logger.warning(f"⚠️ AI post-processing failed: {e}")
+                    logger.warning(f"   Falling back to rule-based result")
+                    # Keep original text if AI processing fails
 
         logger.info(f"✅ Final transcript: '{final_transcript}'")
     else:
@@ -1501,6 +1552,74 @@ async def cancel_job(job_id: str):
         )
 
     return {"success": True, "message": "Job cancelled successfully"}
+
+# AI Post-processing endpoint (can be toggled)
+@router.post("/ai-enhance")
+async def ai_enhance_text(request: AIRequest):
+    """
+    AI-based text enhancement using multiple LLM providers
+
+    This endpoint provides intelligent text processing including:
+    - Grammar and fluency improvements
+    - List formatting
+    - Number conversion (Chinese text → Arabic numerals)
+    - Paragraph organization
+    - Filler word removal
+    - Support for Chinese-English mixed text
+
+    Supported providers:
+    - openai: GPT-4o, GPT-4o-mini, etc.
+    - gemini: Gemini Pro, Gemini Flash, etc.
+    - ollama: Local models (optional)
+
+    Args:
+        request: AI enhancement request with text and provider options
+
+    Returns:
+        Enhanced text
+
+    Examples:
+        # Use OpenAI (default)
+        POST /api/asr/ai-enhance
+        {
+            "text": "嗯 那个 五个 事情 首先 我们需要...",
+            "provider": "openai",
+            "model": "gpt-4o-mini"
+        }
+
+        # Use Gemini
+        POST /api/asr/ai-enhance
+        {
+            "text": "嗯 那个 五个 事情 首先 我们需要...",
+            "provider": "gemini",
+            "model": "gemini-2.0-flash-exp"
+        }
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if not request.text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+    logger.info(f"🤖 AI enhancement request: {len(request.text)} chars, provider={request.provider}")
+
+    try:
+        # Create AI processor
+        ai_processor = AIPostProcessor()
+
+        # Process
+        response = await ai_processor.process(request)
+
+        logger.info(f"✅ AI enhancement complete: {len(response.processed)} chars")
+        return {
+            "original": response.original,
+            "enhanced": response.processed,
+            "provider": response.provider,
+            "model": response.model
+        }
+    except Exception as e:
+        logger.error(f"❌ AI enhancement failed: {e}")
+        raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
 
 
 # Include postprocess router in the main router

@@ -6,6 +6,7 @@ Handles rule-based text cleaning and formatting
 import re
 from typing import Dict, List, Tuple
 from dataclasses import dataclass, field
+from .punctuation import ChinesePunctuationCorrector
 
 
 @dataclass
@@ -57,6 +58,7 @@ class TextProcessor:
         """Initialize text processor"""
         self.fillers = set(self.DEFAULT_FILLERS)
         self.correction_phrases = set(self.DEFAULT_CORRECTIONS)
+        self.punctuation_corrector = ChinesePunctuationCorrector()
 
     def add_filler(self, filler: str):
         """Add custom filler word"""
@@ -283,6 +285,9 @@ class TextProcessor:
 
         # Step 4: Auto-format
         result = self.auto_format(result)
+
+        # Step 5: Correct punctuation
+        result = self.punctuation_corrector.correct(result)
 
         # Calculate total changes
         stats["total_changes"] = sum([
