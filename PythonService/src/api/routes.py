@@ -16,6 +16,7 @@ from src.asr.whisper_model import WhisperASR
 from src.asr.optimized_whisper import OptimizedWhisperASR
 from src.asr.model_config import model_manager, ModelSize, ASRModelConfig, ModelInfo
 from src.asr.audio_processor import AudioProcessor
+from src.asr.audio_pipeline import AudioPipeline
 from src.postprocess.processor import TextProcessor
 from src.postprocess.cloud_llm import ProviderConfig, create_provider_from_env
 from src.api.websocket_stream import streamer
@@ -216,19 +217,42 @@ async def stop_session(session_id: str):
     if session["audio_chunks"]:
         all_audio = np.concatenate(session["audio_chunks"])
 
-        # Add 0.5 seconds of silence at the end to prevent truncation
-        # Whisper needs silence to properly complete the final word
-        sample_rate = model.config.sample_rate
-        silence_samples = int(sample_rate * 0.5)  # 0.5 seconds
-        silence = np.zeros(silence_samples, dtype=np.int16)
-        all_audio_with_silence = np.concatenate([all_audio, silence])
+        # Apply audio processing pipeline (VAD → Enhancement → Segmentation)
+        import logging
+        logger = logging.getLogger(__name__)
 
-        # Transcribe with silence padding
-        final_transcript = model.transcribe(all_audio_with_silence, language="zh")
+        logger.info("🎛️ Applying audio processing pipeline...")
+
+        # Create audio pipeline
+        pipeline = AudioPipeline(
+            vad_threshold=0.5,
+            enable_enhancement=True,
+            enable_vad=True
+        )
+
+        # Process audio
+        processed_segments, stats = pipeline.process(all_audio)
+
+        logger.info(f"   Processed {stats['segments']} segments, "
+                   f"removed {stats['silence_removed'] / 16000:.2f}s silence")
+
+        # Transcribe each segment and combine
+        transcripts = []
+        for i, segment in enumerate(processed_segments):
+            logger.info(f"   Transcribing segment {i+1}/{len(processed_segments)} "
+                       f"({len(segment)} samples)")
+            segment_transcript = model.transcribe(segment, language="zh")
+            if segment_transcript:
+                transcripts.append(segment_transcript)
+
+        # Combine transcripts
+        final_transcript = " ".join(transcripts).strip()
 
         # Add punctuation using text processor
         if final_transcript:
             final_transcript = processor.add_punctuation(final_transcript)
+
+        logger.info(f"✅ Final transcript: '{final_transcript}'")
     else:
         final_transcript = ""
 

@@ -11,6 +11,7 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
     private var audioRecorder: AudioRecorder?
     private var asrService: ASRService
     private var textInjector: TextInjector
+    private var powerMode: PowerModeManager
     private var sessionId: String?
 
     private(set) var isRecording = false
@@ -22,6 +23,7 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
     init() {
         self.asrService = ASRService()
         self.textInjector = TextInjector()
+        self.powerMode = PowerModeManager()
         self.audioRecorder = AudioRecorder()
         self.audioRecorder?.delegate = self
     }
