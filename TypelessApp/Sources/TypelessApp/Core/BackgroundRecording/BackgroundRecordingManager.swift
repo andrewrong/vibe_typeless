@@ -44,8 +44,12 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         NSLog("🎙️ [Background] Starting recording...")
 
         do {
+            // Detect current app for Power Mode
+            let config = powerMode.detectAndUpdate()
+            NSLog("📱 [Background] Power Mode: \(powerMode.getCategory())")
+
             // Start ASR session
-            sessionId = try await asrService.startSession()
+            sessionId = try await asrService.startSession(appInfo: getAppInfo())
             NSLog("✅ [Background] Session started: \(sessionId ?? "nil")")
 
             // Start audio recorder
@@ -56,6 +60,14 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             NSLog("❌ [Background] Failed to start: \(error.localizedDescription)")
             isRecording = false
         }
+    }
+
+    /// Get current app information
+    private func getAppInfo() -> String {
+        let app = NSWorkspace.shared.frontmostApplication
+        let bundleId = app?.bundleIdentifier ?? "unknown"
+        let appName = app?.localizedName ?? "Unknown"
+        return "\(appName)|\(bundleId)"
     }
 
     /// Stop background recording and inject text

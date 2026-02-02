@@ -11,6 +11,81 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import numpy as np
 
+
+# Power Mode configuration
+def detect_app_category(app_info: str) -> str:
+    """Detect app category from bundle identifier"""
+    if not app_info:
+        return "general"
+
+    bundle_id = app_info.split("|")[-1].lower()
+
+    # Coding apps
+    if any(x in bundle_id for x in ["xcode", "vscode", "jetbrains", "sublimetext"]):
+        return "coding"
+
+    # Writing apps
+    if any(x in bundle_id for x in ["notion", "word", "pages"]):
+        return "writing"
+
+    # Chat apps
+    if any(x in bundle_id for x in ["wechat", "slack", "discord"]):
+        return "chat"
+
+    # Browser apps
+    if any(x in bundle_id for x in ["chrome", "safari", "firefox"]):
+        return "browser"
+
+    # Terminal apps
+    if any(x in bundle_id for x in ["terminal", "iterm"]):
+        return "terminal"
+
+    return "general"
+
+
+def get_power_mode_config(category: str) -> Dict:
+    """Get Power Mode configuration for app category"""
+    configs = {
+        "coding": {
+            "add_punctuation": False,        # Code doesn't need punctuation
+            "preserve_case": True,           # Keep variable names case
+            "technical_terms": True,         # Recognize tech terms
+            "remove_fillers": True
+        },
+        "writing": {
+            "add_punctuation": True,         # Full punctuation
+            "preserve_case": False,          # Normalize capitalization
+            "technical_terms": False,
+            "remove_fillers": True
+        },
+        "chat": {
+            "add_punctuation": True,         # Casual punctuation
+            "preserve_case": False,
+            "technical_terms": False,
+            "remove_fillers": False          # Keep natural speech
+        },
+        "browser": {
+            "add_punctuation": True,
+            "preserve_case": False,
+            "technical_terms": False,
+            "remove_fillers": True
+        },
+        "terminal": {
+            "add_punctuation": False,        # Commands don't need punctuation
+            "preserve_case": True,           # Commands are case-sensitive
+            "technical_terms": True,
+            "remove_fillers": True
+        },
+        "general": {
+            "add_punctuation": True,
+            "preserve_case": False,
+            "technical_terms": False,
+            "remove_fillers": True
+        }
+    }
+
+    return configs.get(category, configs["general"])
+
 from src.asr.model import ASRModel, AudioConfig
 from src.asr.whisper_model import WhisperASR
 from src.asr.optimized_whisper import OptimizedWhisperASR
@@ -18,12 +93,18 @@ from src.asr.model_config import model_manager, ModelSize, ASRModelConfig, Model
 from src.asr.audio_processor import AudioProcessor
 from src.asr.audio_pipeline import AudioPipeline
 from src.postprocess.processor import TextProcessor
+from src.postprocess.dictionary import personal_dictionary
 from src.postprocess.cloud_llm import ProviderConfig, create_provider_from_env
 from src.api.websocket_stream import streamer
 from src.api.job_queue import job_queue, JobInfo
 
 
 # Request/Response models
+class SessionStartRequest(BaseModel):
+    """Request for session start"""
+    app_info: Optional[str] = None
+
+
 class SessionStartResponse(BaseModel):
     """Response for session start"""
     session_id: str
@@ -127,9 +208,12 @@ def get_asr_model():
 
 
 @router.post("/start", response_model=SessionStartResponse)
-async def start_session():
+async def start_session(request: SessionStartRequest = None):
     """
     Start a new ASR transcription session
+
+    Args:
+        request: Optional session start request with app_info
 
     Returns:
         Session ID and status
@@ -141,8 +225,13 @@ async def start_session():
         "status": "started",
         "audio_chunks": [],
         "partial_transcript": "",
-        "chunks_received": 0
+        "chunks_received": 0,
+        "app_info": request.app_info if request else None
     }
+
+    # Log app info for Power Mode
+    if request and request.app_info:
+        logger.info(f"📱 Power Mode: App={request.app_info}")
 
     return SessionStartResponse(
         session_id=session_id,
@@ -210,6 +299,14 @@ async def stop_session(session_id: str):
     session = sessions[session_id]
     session["status"] = "stopped"
 
+    # Power Mode: Detect app category and apply config
+    app_info = session.get("app_info", "")
+    app_category = detect_app_category(app_info)
+    power_config = get_power_mode_config(app_category)
+
+    logger.info(f"📱 Power Mode: {app_info} → {app_category}")
+    logger.info(f"   Config: punctuation={power_config['add_punctuation']}, technical={power_config['technical_terms']}")
+
     # Combine all audio chunks and get final transcript
     model = get_asr_model()
 
@@ -248,9 +345,15 @@ async def stop_session(session_id: str):
         # Combine transcripts
         final_transcript = " ".join(transcripts).strip()
 
-        # Add punctuation using text processor
+        # Apply Power Mode configuration
         if final_transcript:
-            final_transcript = processor.add_punctuation(final_transcript)
+            # Apply punctuation based on Power Mode
+            if power_config['add_punctuation']:
+                final_transcript = processor.add_punctuation(final_transcript)
+
+            # Apply personal dictionary (especially for technical terms)
+            if power_config['technical_terms']:
+                final_transcript = personal_dictionary.apply(final_transcript)
 
         logger.info(f"✅ Final transcript: '{final_transcript}'")
     else:
@@ -470,6 +573,148 @@ async def reset_model_config():
         fp16=config.fp16,
         available_models=ModelSize.all()
     )
+
+
+# Dictionary management endpoints
+class DictionaryEntryRequest(BaseModel):
+    """Request for dictionary entry"""
+    spoken: str
+    written: str
+    category: str = "custom"
+    case_sensitive: bool = False
+    whole_word: bool = False
+
+
+class DictionaryEntryResponse(BaseModel):
+    """Response for dictionary entry"""
+    spoken: str
+    written: str
+    category: str
+    case_sensitive: bool
+    whole_word: bool
+
+
+@router.get("/dictionary")
+async def get_dictionary():
+    """
+    Get all dictionary entries
+
+    Returns:
+        All dictionary entries grouped by category
+    """
+    from src.postprocess.dictionary import personal_dictionary
+
+    entries_by_category = {}
+
+    for category in personal_dictionary.get_all_categories():
+        entries = personal_dictionary.get_entries_by_category(category)
+        entries_by_category[category] = [
+            {
+                "spoken": e.spoken,
+                "written": e.written,
+                "case_sensitive": e.case_sensitive,
+                "whole_word": e.whole_word
+            }
+            for e in entries
+        ]
+
+    return {
+        "entries": entries_by_category,
+        "total": sum(len(v) for v in entries_by_category.values())
+    }
+
+
+@router.post("/dictionary")
+async def add_dictionary_entry(request: DictionaryEntryRequest):
+    """
+    Add a new dictionary entry
+
+    Args:
+        request: Dictionary entry data
+
+    Returns:
+        Success message
+    """
+    from src.postprocess.dictionary import personal_dictionary
+
+    personal_dictionary.add_entry(
+        spoken=request.spoken,
+        written=request.written,
+        category=request.category,
+        case_sensitive=request.case_sensitive,
+        whole_word=request.whole_word
+    )
+
+    # Save to file
+    personal_dictionary.save_to_file()
+
+    return {
+        "status": "success",
+        "message": f"Added entry: '{request.spoken}' → '{request.written}'"
+    }
+
+
+@router.delete("/dictionary/{spoken}")
+async def remove_dictionary_entry(spoken: str):
+    """
+    Remove a dictionary entry
+
+    Args:
+        spoken: Spoken form to remove
+
+    Returns:
+        Success message
+    """
+    from src.postprocess.dictionary import personal_dictionary
+
+    personal_dictionary.remove_entry(spoken)
+    personal_dictionary.save_to_file()
+
+    return {
+        "status": "success",
+        "message": f"Removed entry: '{spoken}'"
+    }
+
+
+@router.post("/dictionary/clear")
+async def clear_custom_dictionary():
+    """
+    Clear all custom dictionary entries, keep defaults
+
+    Returns:
+        Success message
+    """
+    from src.postprocess.dictionary import personal_dictionary
+
+    personal_dictionary.clear_custom_entries()
+    personal_dictionary.save_to_file()
+
+    return {
+        "status": "success",
+        "message": "Cleared all custom entries"
+    }
+
+
+@router.post("/dictionary/reload")
+async def reload_dictionary():
+    """
+    Reload dictionary from file
+
+    Returns:
+        Success message
+    """
+    from src.postprocess.dictionary import personal_dictionary
+
+    # Reinitialize dictionary
+    global personal_dictionary
+    from src.postprocess.dictionary import PersonalDictionary
+    personal_dictionary = PersonalDictionary()
+
+    return {
+        "status": "success",
+        "message": "Dictionary reloaded",
+        "entries": len(personal_dictionary.entries)
+    }
 
 
 @router.websocket("/stream")
