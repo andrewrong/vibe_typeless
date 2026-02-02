@@ -36,8 +36,8 @@ class ModelSize(str, Enum):
 @dataclass
 class ASRModelConfig:
     """ASR Model Configuration"""
-    model_size: str = "medium"  # Back to medium - stable and accurate
-    language: Optional[str] = None  # None = auto-detect
+    model_size: str = "large-v3"  # Upgrade to large-v3 for better accuracy
+    language: Optional[str] = "zh"  # Explicitly set to Chinese
     fp16: bool = True  # Use fp16 for memory efficiency
 
     def __post_init__(self):
