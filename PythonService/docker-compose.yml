@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: typeless-backend
     ports:
-      - "8000:8000"
+      - "28111:8000"
     environment:
       # AI Provider 配置
       - AI_PROVIDER=${AI_PROVIDER:-openai}

@@ -28,7 +28,7 @@ mkdir -p logs
 echo "📡 启动后端服务..."
 uv run --prerelease=allow uvicorn src.api.server:app \
     --host 127.0.0.1 \
-    --port 8000 \
+    --port 28111 \
     > logs/server.log 2>&1 &
 
 BACKEND_PID=$!
@@ -39,7 +39,7 @@ echo "⏳ 等待后端启动..."
 sleep 5
 
 # 验证后端
-if curl -s http://127.0.0.1:8000/health > /dev/null 2>&1; then
+if curl -s http://127.0.0.1:28111/health > /dev/null 2>&1; then
     echo "✅ 后端服务启动成功 (PID: $BACKEND_PID)"
 else
     echo "❌ 后端服务启动失败，请查看日志:"
@@ -51,9 +51,9 @@ echo ""
 echo "✅ 后端服务已启动！"
 echo ""
 echo "📍 服务地址:"
-echo "   - API: http://127.0.0.1:8000"
-echo "   - 文档: http://127.0.0.1:8000/docs"
-echo "   - 健康检查: http://127.0.0.1:8000/health"
+echo "   - API: http://127.0.0.1:28111"
+echo "   - 文档: http://127.0.0.1:28111/docs"
+echo "   - 健康检查: http://127.0.0.1:28111/health"
 echo ""
 echo "📋 后端日志:"
 echo "   tail -f $PROJECT_ROOT/PythonService/logs/server.log"

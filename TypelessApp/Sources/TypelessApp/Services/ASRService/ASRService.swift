@@ -58,7 +58,7 @@ class ASRService: NSObject {
 
     // MARK: - Initialization
 
-    init(baseURL: String = "http://127.0.0.1:8000") {
+    init(baseURL: String = "http://127.0.0.1:28111") {
         self.baseURL = baseURL
 
         let configuration = URLSessionConfiguration.default

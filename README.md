@@ -98,12 +98,12 @@ OPENAI_API_KEY=sk-your-key-here
 
 ### Swift 应用配置
 
-Swift 应用默认连接 `http://127.0.0.1:8000`，如需修改：
+Swift 应用默认连接 `http://127.0.0.1:28111`，如需修改：
 
 编辑 `TypelessApp/Sources/TypelessApp/Services/ASRService/ASRService.swift`:
 
 ```swift
-init(baseURL: String = "http://127.0.0.1:8000") {
+init(baseURL: String = "http://127.0.0.1:28111") {
     // 修改为你的后端地址
 }
 ```
@@ -127,7 +127,7 @@ init(baseURL: String = "http://127.0.0.1:8000") {
 A: 检查端口是否被占用: `lsof -i :8000`
 
 ### Q: Swift 应用无法连接后端？
-A: 确认后端已启动: `curl http://127.0.0.1:8000/health`
+A: 确认后端已启动: `curl http://127.0.0.1:28111/health`
 
 ### Q: 模型下载很慢？
 A: 首次运行会下载 ~3GB 模型，请耐心等待
@@ -160,7 +160,7 @@ tail -f PythonService/logs/server.log
 - [Docker 部署](PythonService/DOCKER.md) - Docker 容器化部署
 - [部署方式对比](PythonService/DEPLOYMENT_COMPARISON.md) - 本地 vs Docker 对比
 - [部署检查清单](PythonService/CHECKLIST.md) - 部署验证清单
-- [API 文档](http://127.0.0.1:8000/docs) - 交互式 API 文档（服务启动后）
+- [API 文档](http://127.0.0.1:28111/docs) - 交互式 API 文档（服务启动后）
 
 ## 版本信息
 

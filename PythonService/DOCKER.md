@@ -29,10 +29,10 @@ cd PythonService
 
 ```bash
 # 健康检查
-curl http://localhost:8000/health
+curl http://localhost:28111/health
 
 # 访问 API 文档
-# 浏览器打开: http://localhost:8000/docs
+# 浏览器打开: http://localhost:28111/docs
 ```
 
 ### 3. 停止服务
@@ -391,7 +391,7 @@ tmpfs:
 
 ```bash
 # 添加健康检查监控
-watch -n 5 'curl -s http://localhost:8000/health | jq .'
+watch -n 5 'curl -s http://localhost:28111/health | jq .'
 ```
 
 ### 4. 日志收集

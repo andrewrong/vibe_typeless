@@ -51,7 +51,7 @@
 
 - [ ] **验证服务启动**
   ```bash
-  curl http://127.0.0.1:8000/health
+  curl http://127.0.0.1:28111/health
   # 应返回: {"status":"healthy"}
   ```
 
@@ -83,7 +83,7 @@
   ```
 
 - [ ] **访问 API 文档**
-  浏览器打开: http://127.0.0.1:8000/docs
+  浏览器打开: http://127.0.0.1:28111/docs
 
 - [ ] **测试转录功能**
   - 在 Swift 应用中录制音频
@@ -97,7 +97,7 @@
 - [ ] 查看错误日志: `tail -100 logs/server.log`
 
 ### 前端无法连接
-- [ ] 确认后端已启动: `curl http://127.0.0.1:8000/health`
+- [ ] 确认后端已启动: `curl http://127.0.0.1:28111/health`
 - [ ] 检查 Swift 应用中的 baseURL 配置
 
 ### ASR 不工作
@@ -134,7 +134,7 @@ cd PythonService
 | 启动后端 | `cd PythonService && ./start.sh` |
 | 停止后端 | `cd PythonService && ./stop.sh` |
 | 查看日志 | `tail -f PythonService/logs/server.log` |
-| 健康检查 | `curl http://127.0.0.1:8000/health` |
+| 健康检查 | `curl http://127.0.0.1:28111/health` |
 | 测试部署 | `cd PythonService && ./test_deployment.sh` |
 | 启动前端 | `cd TypelessApp && swift run TypelessApp` |
 

@@ -7,7 +7,7 @@
 │  Swift App (TypelessApp)                                │
 │  - macOS 14+ 应用                                       │
 │  - 音频捕获 + 文本注入                                  │
-│  - 连接到 http://127.0.0.1:8000                         │
+│  - 连接到 http://127.0.0.1:28111                         │
 └─────────────────────────────────────────────────────────┘
                           │
                     HTTP/WebSocket
@@ -89,7 +89,7 @@ nohup uv run --prerelease=allow uvicorn src.api.server:app \
 
 ```bash
 # 健康检查
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:28111/health
 
 # 应该返回: {"status":"healthy"}
 
@@ -148,7 +148,7 @@ echo $! > logs/server.pid
 
 # 验证服务启动
 sleep 3
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:28111/health
 ```
 
 **终端 2 - 启动前端：**
@@ -204,7 +204,7 @@ echo "⏳ 等待后端启动..."
 sleep 5
 
 # 验证后端
-if curl -s http://127.0.0.1:8000/health > /dev/null; then
+if curl -s http://127.0.0.1:28111/health > /dev/null; then
     echo "✅ 后端服务启动成功 (PID: $BACKEND_PID)"
 else
     echo "❌ 后端服务启动失败"
@@ -215,7 +215,7 @@ fi
 echo ""
 echo "✅ 所有服务已启动！"
 echo ""
-echo "后端 API: http://127.0.0.1:8000"
+echo "后端 API: http://127.0.0.1:28111"
 echo "后端日志: $PROJECT_ROOT/PythonService/logs/server.log"
 echo ""
 echo "现在可以在新终端启动 Swift 应用:"
@@ -288,10 +288,10 @@ cat .env
 
 ```bash
 # 验证后端是否运行
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:28111/health
 
 # 检查 Swift 应用中的 baseURL 配置
-# 默认: http://127.0.0.1:8000
+# 默认: http://127.0.0.1:28111
 # 在 ASRService.swift 中修改
 ```
 
@@ -371,7 +371,7 @@ echo "🧪 测试部署..."
 
 # 1. 测试后端健康检查
 echo "1️⃣ 测试后端健康检查..."
-HEALTH=$(curl -s http://127.0.0.1:8000/health)
+HEALTH=$(curl -s http://127.0.0.1:28111/health)
 if [[ $HEALTH == *"healthy"* ]]; then
     echo "✅ 后端健康检查通过"
 else
@@ -404,9 +404,9 @@ swift run TypelessApp
 
 ### 服务地址：
 
-- **后端 API**: http://127.0.0.1:8000
-- **API 文档**: http://127.0.0.1:8000/docs
-- **健康检查**: http://127.0.0.1:8000/health
+- **后端 API**: http://127.0.0.1:28111
+- **API 文档**: http://127.0.0.1:28111/docs
+- **健康检查**: http://127.0.0.1:28111/health
 
 ### 需要帮助？
 
