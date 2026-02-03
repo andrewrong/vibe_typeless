@@ -4,19 +4,29 @@
 
 ## 快速开始
 
-### 1. 一键启动后端
+### 选择部署方式
 
+**方式 1: 本地部署** (推荐开发环境)
 ```bash
 cd PythonService
 ./start.sh
 ```
 
-**首次运行需要：**
+**方式 2: Docker 部署** (推荐生产环境)
+```bash
+cd PythonService
+./docker-start.sh
+```
+
+> 💡 **提示**: Docker 部署提供更好的隔离性和可移植性。详见 [Docker 部署指南](PythonService/DOCKER.md) 或 [部署方式对比](PythonService/DEPLOYMENT_COMPARISON.md)
+
+### 首次运行需要：
+
 1. 配置 `.env` 文件（添加 AI API 密钥）
 2. 等待下载 Whisper 模型（~3GB）
 3. 启动完成会提示启动 Swift 应用
 
-### 2. 启动 Swift 应用
+### 3. 启动 Swift 应用
 
 ```bash
 # 新开一个终端
@@ -147,8 +157,10 @@ tail -f PythonService/logs/server.log
 ## 文档
 
 - [部署指南](PythonService/DEPLOYMENT.md) - 详细部署说明
+- [Docker 部署](PythonService/DOCKER.md) - Docker 容器化部署
+- [部署方式对比](PythonService/DEPLOYMENT_COMPARISON.md) - 本地 vs Docker 对比
+- [部署检查清单](PythonService/CHECKLIST.md) - 部署验证清单
 - [API 文档](http://127.0.0.1:8000/docs) - 交互式 API 文档（服务启动后）
-- [快速测试](PythonService/test_deployment.sh) - 部署验证脚本
 
 ## 版本信息
 

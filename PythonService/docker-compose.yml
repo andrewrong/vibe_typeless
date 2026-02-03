@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  typeless-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: typeless-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # AI Provider 配置
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+
+      # 模型缓存目录
+      - MODEL_CACHE_DIR=/app/models
+      - HF_HOME=/app/models
+      - WHISPER_CACHE_DIR=/app/models/whisper
+      - HF_HUB_CACHE=/app/models/huggingface
+
+      # 日志级别
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+
+    volumes:
+      # 模型文件持久化 - 避免每次重启都重新下载
+      - ${MODEL_CACHE_PATH:-./models}:/app/models
+
+      # 配置文件
+      - ${PWD}/.env:/app/.env:ro
+
+      # 日志目录
+      - ${PWD}/logs:/app/logs
+
+    restart: unless-stopped
+
+    # 资源限制（根据你的机器调整）
+    deploy:
+      resources:
+        limits:
+          cpus: '4'      # CPU 核心数
+          memory: 8G    # 最大内存
+        reservations:
+          cpus: '2'
+          memory: 4G
+
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    networks:
+      - typeless-network
+
+networks:
+  typeless-network:
+    driver: bridge
+
+# 如果需要使用 Ollama，可以取消注释以下配置
+# services:
+#   ollama:
+#     image: ollama/ollama:latest
+#     container_name: ollama
+#     ports:
+#       - "11434:11434"
+#     volumes:
+#       - ollama_data:/root/.ollama
+#     restart: unless-stopped
+#
+# volumes:
+#   ollama_data:
