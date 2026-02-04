@@ -265,11 +265,11 @@ class AIPostProcessor:
 
         logger.info(f"Calling Gemini API: {model}")
 
-        # 调用 API（使用新的 generate_content API）
+        # 调用 API（使用新的 google.genai API）
         response = client.models.generate_content(
             model=model,
             contents=prompt,
-            config=genai.GenerateContentConfig(
+            config=genai.types.GenerateContentConfig(
                 temperature=0.3,
                 max_output_tokens=4096,
             )
