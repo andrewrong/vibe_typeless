@@ -6,6 +6,7 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarApp: MenuBarApp?
     private var eventMonitor: Any?
+    private var monitorFlags: Any?
     private var wasRightControlDown = false  // Track previous state
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -17,10 +18,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Set activation policy to run as regular app with menu bar
         NSApp.setActivationPolicy(.regular)
 
-        // Set up Right Control key monitoring
+        // Set up Right Control key monitoring for toggle
         setupRightControlMonitor()
 
-        print("✅ Background service ready with Right Control hotkey")
+        // Set up ESC key monitoring for cancel
+        setupEscapeMonitor()
+
+        print("✅ Background service ready with Right Control (toggle) and ESC (cancel) hotkeys")
     }
 
     func setupRightControlMonitor() {
@@ -29,7 +33,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
 
             // Right Control key code is 62 (0x3E)
-            // We check both keyCode and modifierFlags
             if event.keyCode == 62 {
                 let isRightControlDown = event.modifierFlags.contains(.control)
 
@@ -50,9 +53,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("✅ Right Control hotkey registered")
     }
 
+    func setupEscapeMonitor() {
+        // Monitor for ESC key to cancel recording
+        // ESC key code is 53 (0x35)
+        monitorFlags = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            guard let self = self else { return }
+
+            if event.keyCode == 53 {  // ESC key
+                // Check if recording is active
+                let menuBar = self.menuBarApp
+                Task { @MainActor in
+                    if menuBar?.isRecording == true {
+                        NSLog("⚠️ ESC pressed - cancelling recording")
+                        await menuBar?.cancelRecording()
+                    }
+                }
+            }
+        }
+
+        print("✅ ESC (cancel) hotkey registered")
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
-        // Remove event monitor
+        // Remove event monitors
         if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = monitorFlags {
             NSEvent.removeMonitor(monitor)
         }
     }

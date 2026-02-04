@@ -119,6 +119,34 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         self.sessionId = nil
     }
 
+    /// Cancel recording without saving transcript
+    func cancelRecording() async {
+        NSLog("❌ [Background] Cancelling recording...")
+
+        guard let recorder = audioRecorder else {
+            NSLog("❌ [Background] No recorder to cancel")
+            return
+        }
+
+        // Stop recording
+        recorder.stopRecording()
+        isRecording = false
+
+        // Cancel ASR session (discard results)
+        if let sessionId = sessionId {
+            // Note: We don't call stopSession, just discard the session
+            // The backend will timeout and clean up
+            NSLog("🗑️ [Background] Discarded session: \(sessionId)")
+        }
+
+        // Hide preview window
+        previewWindow?.hide()
+
+        self.sessionId = nil
+
+        NSLog("✅ [Background] Recording cancelled, transcript discarded")
+    }
+
     // MARK: - AudioRecorderDelegate
 
     nonisolated func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data) {

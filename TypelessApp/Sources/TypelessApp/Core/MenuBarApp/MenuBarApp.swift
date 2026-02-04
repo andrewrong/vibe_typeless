@@ -31,12 +31,12 @@ class MenuBarApp: NSObject {
         statusItem?.button?.imagePosition = .imageLeft
 
         // Set tooltip
-        statusItem?.button?.toolTip = "Typeless - Press Right Control to record"
+        statusItem?.button?.toolTip = "Typeless - Press Right Control to record, ESC to cancel"
 
         // Create menu
         let menu = NSMenu()
 
-        // Start/Stop Recording menu item (no keyboard shortcut shown, uses Right Control globally)
+        // Start/Stop Recording menu item
         let toggleItem = NSMenuItem(
             title: "Start Recording",
             action: #selector(toggleRecording),
@@ -44,6 +44,17 @@ class MenuBarApp: NSObject {
         )
         toggleItem.target = self
         menu.addItem(toggleItem)
+
+        // Cancel Recording menu item (hidden by default)
+        let cancelItem = NSMenuItem(
+            title: "Cancel Recording (ESC)",
+            action: #selector(cancelRecordingMenu),
+            keyEquivalent: ""
+        )
+        cancelItem.target = self
+        cancelItem.isHidden = true
+        cancelItem.tag = 999  // Tag to find this item later
+        menu.addItem(cancelItem)
 
         // Separator
         menu.addItem(NSMenuItem.separator())
@@ -71,7 +82,7 @@ class MenuBarApp: NSObject {
 
         statusItem?.menu = menu
 
-        print("✅ Menu bar setup complete with Right Control shortcut")
+        print("✅ Menu bar setup complete with Right Control (toggle) and ESC (cancel) shortcuts")
     }
 
     // MARK: - Actions
@@ -86,6 +97,20 @@ class MenuBarApp: NSObject {
                 stopRecording()
             }
         }
+    }
+
+    @objc func cancelRecordingMenu() {
+        Task {
+            await cancelRecording()
+        }
+    }
+
+    func cancelRecording() async {
+        print("⚠️ [MenuBar] Cancelling recording...")
+        isRecording = false
+        updateStatus(recording: false)
+
+        await backgroundManager?.cancelRecording()
     }
 
     private func startRecording() {
@@ -124,14 +149,28 @@ class MenuBarApp: NSObject {
         statusItem?.button?.image = recording ? recordingIcon : idleIcon
 
         if recording {
-            statusItem?.button?.toolTip = "Stop Recording (Right Control)"
-            if let menu = statusItem?.menu, let item = menu.items.first {
-                item.title = "Stop Recording"
+            statusItem?.button?.toolTip = "Stop: Right Control | Cancel: ESC"
+            if let menu = statusItem?.menu {
+                // Update first item
+                if let item = menu.items.first {
+                    item.title = "Stop Recording (Right Control)"
+                }
+                // Show cancel item (tag 999)
+                if let cancelItem = menu.items.first(where: { $0.tag == 999 }) {
+                    cancelItem.isHidden = false
+                }
             }
         } else {
             statusItem?.button?.toolTip = "Start Recording (Right Control)"
-            if let menu = statusItem?.menu, let item = menu.items.first {
-                item.title = "Start Recording"
+            if let menu = statusItem?.menu {
+                // Update first item
+                if let item = menu.items.first {
+                    item.title = "Start Recording (Right Control)"
+                }
+                // Hide cancel item (tag 999)
+                if let cancelItem = menu.items.first(where: { $0.tag == 999 }) {
+                    cancelItem.isHidden = true
+                }
             }
         }
     }
