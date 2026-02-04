@@ -123,6 +123,12 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
 
     nonisolated func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data) {
         Task { @MainActor in
+            // 检查是否还在录音（防止停止后的延迟回调）
+            guard isRecording else {
+                NSLog("⚠️ [Background] Recording stopped, skipping audio chunk")
+                return
+            }
+
             guard let sessionId = sessionId else {
                 NSLog("⚠️ [Background] No session ID, skipping audio chunk")
                 return

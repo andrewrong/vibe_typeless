@@ -208,23 +208,40 @@ class AIPostProcessor:
         if self.settings.OPENAI_BASE_URL:
             client_kwargs["base_url"] = self.settings.OPENAI_BASE_URL
             logger.info(f"Using custom OpenAI base_url: {self.settings.OPENAI_BASE_URL}")
+            # OpenRouter 推荐添加额外 headers
+            client_kwargs["default_headers"] = {
+                "HTTP-Referer": "https://typeless.local",  # 可选：你的应用 URL
+                "X-Title": "Typeless",  # 可选：你的应用名称
+            }
+            logger.info("Added OpenRouter recommended headers")
 
         client = OpenAI(**client_kwargs)
         prompt = POSTPROCESSING_PROMPT.format(text=text)
 
         logger.info(f"Calling OpenAI API: {model}")
+        logger.debug(f"API Key prefix: {api_key[:10]}...{api_key[-4:]}")
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0.3,
-            max_tokens=4096
-        )
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.3,
+                max_tokens=4096
+            )
+        except Exception as e:
+            logger.error(f"OpenAI API call failed: {type(e).__name__}: {e}")
+            # 如果是认证错误，提供更详细的信息
+            if "401" in str(e) or "Unauthorized" in str(e):
+                logger.error("Authentication failed. Please check:")
+                logger.error("  1. API Key is valid and not expired")
+                logger.error("  2. API Key has sufficient credits")
+                logger.error("  3. Visit https://openrouter.ai/keys to verify")
+            raise
 
         processed_text = response.choices[0].message.content.strip()
         return processed_text
