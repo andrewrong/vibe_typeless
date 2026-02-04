@@ -157,6 +157,9 @@ tail -f PythonService/logs/server.log
 ## 文档
 
 - [部署指南](PythonService/DEPLOYMENT.md) - 详细部署说明
+- [性能优化指南](PythonService/PERFORMANCE.md) - Docker vs 本地性能对比
+- [Docker 部署](PythonService/DOCKER.md) - Docker 容器化部署
+- [部署方式对比](PythonService/DEPLOYMENT_COMPARISON.md) - 本地 vs Docker 对比
 - [Docker 部署](PythonService/DOCKER.md) - Docker 容器化部署
 - [部署方式对比](PythonService/DEPLOYMENT_COMPARISON.md) - 本地 vs Docker 对比
 - [部署检查清单](PythonService/CHECKLIST.md) - 部署验证清单
