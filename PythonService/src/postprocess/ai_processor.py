@@ -251,30 +251,28 @@ class AIPostProcessor:
             )
 
         try:
-            import google.generativeai as genai
+            from google import genai
         except ImportError:
             raise ImportError(
-                "Google Generative AI SDK not installed. "
-                "Install with: uv add google-generativeai"
+                "Google Gen AI SDK not installed. "
+                "Install with: uv add google-genai"
             )
 
-        # 配置 API
-        genai.configure(api_key=api_key)
-
-        # 创建模型实例
-        genai_model = genai.GenerativeModel(model)
+        # 创建客户端
+        client = genai.Client(api_key=api_key)
 
         prompt = POSTPROCESSING_PROMPT.format(text=text)
 
         logger.info(f"Calling Gemini API: {model}")
 
-        # 调用 API
-        response = genai_model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.3,
-                "max_output_tokens": 4096,
-            }
+        # 调用 API（使用新的 generate_content API）
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=genai.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=4096,
+            )
         )
 
         processed_text = response.text.strip()
