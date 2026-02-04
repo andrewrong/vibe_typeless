@@ -85,14 +85,14 @@ echo ""
 echo "7️⃣ 检查端口占用..."
 if lsof -i :28111 > /dev/null 2>&1; then
     if docker ps | grep -q "typeless-backend"; then
-        echo "⚠️  端口 8000 已被 Docker 容器使用"
+        echo "⚠️  端口 28111 已被 Docker 容器使用"
     else
-        echo "⚠️  端口 8000 被其他进程占用"
+        echo "⚠️  端口 28111 被其他进程占用"
         echo "   占用进程:"
         lsof -i :28111 | tail -n +2
     fi
 else
-    echo "✅ 端口 8000 可用"
+    echo "✅ 端口 28111 可用"
 fi
 
 # 验证 docker-compose 配置
