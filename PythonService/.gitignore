@@ -20,3 +20,6 @@ build/
 # Environment variables
 .env
 .env.local
+
+# Runtime files (logs, models, temp files)
+runtime/

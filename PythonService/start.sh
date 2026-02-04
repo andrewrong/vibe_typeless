@@ -34,18 +34,28 @@ if [ ! -f .env ]; then
     read -p "按 Enter 继续 (确保已配置 .env)..."
 fi
 
-# 创建日志目录
-mkdir -p logs
+# 创建运行时目录
+mkdir -p runtime/logs runtime/models runtime/tmp
+
+# 设置环境变量 - 模型缓存到 runtime/models
+export HF_HOME="$(pwd)/runtime/models"
+export HUGGINGFACE_HUB_CACHE="$(pwd)/runtime/models"
+export MODEL_CACHE_DIR="$(pwd)/runtime/models"
+export TMPDIR="$(pwd)/runtime/tmp"
 
 # 启动后端
 echo "📡 启动后端服务..."
+echo "   模型缓存: $(pwd)/runtime/models"
+echo "   日志目录: $(pwd)/runtime/logs"
+echo ""
+
 uv run --prerelease=allow uvicorn src.api.server:app \
     --host 127.0.0.1 \
     --port 28111 \
-    > logs/server.log 2>&1 &
+    > runtime/logs/server.log 2>&1 &
 
 BACKEND_PID=$!
-echo $BACKEND_PID > logs/server.pid
+echo $BACKEND_PID > runtime/logs/server.pid
 
 # 等待后端启动
 echo "⏳ 等待后端启动..."
@@ -56,7 +66,7 @@ if curl -s http://127.0.0.1:28111/health > /dev/null 2>&1; then
     echo "✅ 后端服务启动成功 (PID: $BACKEND_PID)"
 else
     echo "❌ 后端服务启动失败，请查看日志:"
-    echo "   tail -f logs/server.log"
+    echo "   tail -f runtime/logs/server.log"
     exit 1
 fi
 

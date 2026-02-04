@@ -22,16 +22,16 @@ fi
 echo "🛑 停止 Typeless 服务..."
 
 # 尝试从 PID 文件停止
-if [ -f logs/server.pid ]; then
-    PID=$(cat logs/server.pid)
+if [ -f runtime/logs/server.pid ]; then
+    PID=$(cat runtime/logs/server.pid)
     if ps -p $PID > /dev/null 2>&1; then
         echo "停止后端服务 (PID: $PID)..."
         kill $PID
-        rm logs/server.pid
+        rm runtime/logs/server.pid
         echo "✅ 后端服务已停止"
     else
         echo "⚠️  进程 $PID 不存在"
-        rm logs/server.pid
+        rm runtime/logs/server.pid
     fi
 else
     # 尝试找到并停止所有 uvicorn 进程

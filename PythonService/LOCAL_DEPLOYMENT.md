@@ -17,6 +17,19 @@ python --version
 brew install python@3.11
 ```
 
+### 步骤 1.5：迁移现有文件（可选）
+
+如果你之前运行过 Typeless，可以迁移旧的模型和日志：
+
+```bash
+# 运行迁移脚本
+./migrate_runtime.sh
+```
+
+这会将：
+- 旧的日志从 `logs/` 移动到 `runtime/logs/`
+- 模型从 `~/.cache/huggingface/` 移动到 `runtime/models/`
+
 ### 步骤 2：安装依赖
 
 ```bash
@@ -130,10 +143,10 @@ curl -X POST \
 
 ```bash
 # 实时查看日志
-tail -f logs/server.log
+tail -f runtime/logs/server.log
 
 # 查看最近 50 行
-tail -50 logs/server.log
+tail -50 runtime/logs/server.log
 ```
 
 ## 🛑 停止服务
@@ -148,6 +161,41 @@ cd PythonService
 ### 停止前端
 
 在 Swift 应用终端按 `Cmd + Q` 或 `Ctrl + C`
+
+## 📂 运行时目录结构
+
+所有运行时文件都存放在 `runtime/` 目录下：
+
+```
+runtime/
+├── logs/              # 应用日志
+│   ├── server.log         # 服务器日志
+│   └── server.pid         # 进程 ID
+├── models/            # 模型缓存（自动下载）
+│   └── hub/               # HuggingFace 模型
+└── tmp/              # 临时文件
+```
+
+### 查看模型和日志大小
+
+```bash
+# 查看 runtime 目录大小
+du -sh runtime/
+
+# 查看各个模型的大小
+du -sh runtime/models/hub/models--mlx-community--whisper-*
+```
+
+### 清理模型
+
+如果需要释放空间：
+
+```bash
+# 删除不需要的模型
+rm -rf runtime/models/hub/models--mlx-community--whisper-medium-mlx
+```
+
+更多详情请查看 [runtime/README.md](runtime/README.md)
 
 ## 🔄 日常使用
 

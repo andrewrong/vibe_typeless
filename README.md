@@ -192,7 +192,7 @@ uv run pytest tests/test_asr.py
 
 ```bash
 # 后端日志
-tail -f PythonService/logs/server.log
+tail -f PythonService/runtime/logs/server.log
 ```
 
 ## 文档
