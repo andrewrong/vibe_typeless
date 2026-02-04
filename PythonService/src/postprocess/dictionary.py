@@ -64,6 +64,128 @@ class PersonalDictionary:
         DictionaryEntry("ml", "ML", "tech", case_sensitive=False),
         DictionaryEntry("llm", "LLM", "tech", case_sensitive=False),
         DictionaryEntry("gpt", "GPT", "tech", case_sensitive=False),
+
+        # ========== Financial & Stock Market Terms ==========
+
+        # Investment products (English abbreviations)
+        DictionaryEntry("etf", "ETF", "finance", case_sensitive=False),
+        DictionaryEntry("etr", "ETF", "finance", case_sensitive=False),  # 常见误读
+        DictionaryEntry("lof", "LOF", "finance", case_sensitive=False),
+        DictionaryEntry("reits", "REITs", "finance", case_sensitive=False),
+
+        # Stock metrics
+        DictionaryEntry("pe", "PE", "finance", case_sensitive=False),  # 市盈率
+        DictionaryEntry("pb", "PB", "finance", case_sensitive=False),  # 市净率
+        DictionaryEntry("roe", "ROE", "finance", case_sensitive=False),  # 净资产收益率
+        DictionaryEntry("roc", "ROC", "finance", case_sensitive=False),  # 变动率指标
+        DictionaryEntry("eps", "EPS", "finance", case_sensitive=False),  # 每股收益
+        DictionaryEntry("bps", "BPS", "finance", case_sensitive=False),  # 每股净资产
+        DictionaryEntry("capm", "CAPM", "finance", case_sensitive=False),  # 资本资产定价模型
+
+        # Stock market terms
+        DictionaryEntry("ipo", "IPO", "finance", case_sensitive=False),  # 首次公开募股
+        DictionaryEntry("a股", "A股", "finance", case_sensitive=False),
+        DictionaryEntry("b股", "B股", "finance", case_sensitive=False),
+        DictionaryEntry("h股", "H股", "finance", case_sensitive=False),
+        DictionaryEntry("美股", "美股", "finance"),
+        DictionaryEntry("港股", "港股", "finance"),
+        DictionaryEntry("新三板", "新三板", "finance"),
+        DictionaryEntry("科创板", "科创板", "finance"),
+        DictionaryEntry("创业板", "创业板", "finance"),
+        DictionaryEntry("北交所", "北交所", "finance"),
+
+        # Trading terms
+        DictionaryEntry("做多", "做多", "finance"),
+        DictionaryEntry("做空", "做空", "finance"),
+        DictionaryEntry("多头", "多头", "finance"),
+        DictionaryEntry("空头", "空头", "finance"),
+        DictionaryEntry("仓位", "仓位", "finance"),
+        DictionaryEntry("满仓", "满仓", "finance"),
+        DictionaryEntry("空仓", "空仓", "finance"),
+        DictionaryEntry("半仓", "半仓", "finance"),
+        DictionaryEntry("补仓", "补仓", "finance"),
+        DictionaryEntry("减仓", "减仓", "finance"),
+        DictionaryEntry("平仓", "平仓", "finance"),
+        DictionaryEntry("爆仓", "爆仓", "finance"),
+        DictionaryEntry("斩仓", "斩仓", "finance"),
+        DictionaryEntry("止损", "止损", "finance"),
+        DictionaryEntry("止盈", "止盈", "finance"),
+        DictionaryEntry("杠杆", "杠杆", "finance"),
+        DictionaryEntry("杠杆率", "杠杆率", "finance"),
+
+        # Options & derivatives
+        DictionaryEntry("期权", "期权", "finance"),
+        DictionaryEntry("期货", "期货", "finance"),
+        DictionaryEntry("股指期货", "股指期货", "finance"),
+        DictionaryEntry("看涨期权", "看涨期权", "finance"),
+        DictionaryEntry("看跌期权", "看跌期权", "finance"),
+        DictionaryEntry("认购期权", "认购期权", "finance"),
+        DictionaryEntry("认沽期权", "认沽期权", "finance"),
+        DictionaryEntry("行权价", "行权价", "finance"),
+        DictionaryEntry("到期日", "到期日", "finance"),
+
+        # Valuation metrics
+        DictionaryEntry("市盈率", "市盈率", "finance"),
+        DictionaryEntry("市净率", "市净率", "finance"),
+        DictionaryEntry("市销率", "市销率", "finance"),
+        DictionaryEntry("股息率", "股息率", "finance"),
+        DictionaryEntry("分红率", "分红率", "finance"),
+        DictionaryEntry("收益率", "收益率", "finance"),
+        DictionaryEntry("回报率", "回报率", "finance"),
+        DictionaryEntry("换手率", "换手率", "finance"),
+        DictionaryEntry("振幅", "振幅", "finance"),
+        DictionaryEntry("涨跌幅", "涨跌幅", "finance"),
+
+        # Economic indicators (English abbreviations)
+        DictionaryEntry("cpi", "CPI", "economics", case_sensitive=False),  # 消费者物价指数
+        DictionaryEntry("ppi", "PPI", "economics", case_sensitive=False),  # 生产者物价指数
+        DictionaryEntry("gdp", "GDP", "economics", case_sensitive=False),  # 国内生产总值
+        DictionaryEntry("pmi", "PMI", "economics", case_sensitive=False),  # 采购经理指数
+        DictionaryEntry("m2", "M2", "economics", case_sensitive=False),    # 广义货币供应量
+        DictionaryEntry("m1", "M1", "economics", case_sensitive=False),    # 狭义货币供应量
+
+        # Trading strategies
+        DictionaryEntry("价值投资", "价值投资", "finance"),
+        DictionaryEntry("成长投资", "成长投资", "finance"),
+        DictionaryEntry("定投", "定投", "finance"),
+        DictionaryEntry("分批建仓", "分批建仓", "finance"),
+        DictionaryEntry("金字塔建仓", "金字塔建仓", "finance"),
+        DictionaryEntry("倒金字塔建仓", "倒金字塔建仓", "finance"),
+
+        # Technical analysis
+        DictionaryEntry("均线", "均线", "finance"),
+        DictionaryEntry("五日线", "5日线", "finance"),
+        DictionaryEntry("十日线", "10日线", "finance"),
+        DictionaryEntry("二十日线", "20日线", "finance"),
+        DictionaryEntry("六十日线", "60日线", "finance"),
+        DictionaryEntry("年线", "年线", "finance"),
+        DictionaryEntry("支撑位", "支撑位", "finance"),
+        DictionaryEntry("阻力位", "阻力位", "finance"),
+        DictionaryEntry("压力位", "压力位", "finance"),
+        DictionaryEntry("突破", "突破", "finance"),
+        DictionaryEntry("回调", "回调", "finance"),
+        DictionaryEntry("反弹", "反弹", "finance"),
+
+        # Market sentiment
+        DictionaryEntry("牛市", "牛市", "finance"),
+        DictionaryEntry("熊市", "熊市", "finance"),
+        DictionaryEntry("震荡市", "震荡市", "finance"),
+        DictionaryEntry("结构性行情", "结构性行情", "finance"),
+        DictionaryEntry("板块轮动", "板块轮动", "finance"),
+
+        # Stock types
+        DictionaryEntry("蓝筹股", "蓝筹股", "finance"),
+        DictionaryEntry("成长股", "成长股", "finance"),
+        DictionaryEntry("价值股", "价值股", "finance"),
+        DictionaryEntry("周期股", "周期股", "finance"),
+        DictionaryEntry("题材股", "题材股", "finance"),
+        DictionaryEntry("概念股", "概念股", "finance"),
+        DictionaryEntry("龙头股", "龙头股", "finance"),
+        DictionaryEntry("权重股", "权重股", "finance"),
+        DictionaryEntry("小盘股", "小盘股", "finance"),
+        DictionaryEntry("中盘股", "中盘股", "finance"),
+        DictionaryEntry("大盘股", "大盘股", "finance"),
+        DictionaryEntry("微盘股", "微盘股", "finance"),
     ]
 
     def __init__(self, custom_path: Optional[Path] = None):
