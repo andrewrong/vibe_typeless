@@ -1,3 +1,20 @@
+# ⚠️  Docker 部署性能警告 (macOS Apple Silicon)
+#
+# macOS Docker 容器运行在 Linux VM 中，有以下限制：
+#   ❌ 无法访问 macOS GPU/神经引擎（约 40% 性能损失）
+#   ⚠️  资源限制会进一步降低性能
+#   ✅ 如需最佳性能，请使用本地部署：./start.sh
+#
+# 性能对比（35 秒音频转录）：
+#   - 本地部署: 5-8 秒 (100% 性能)
+#   - Docker: 8-12 秒 (60-70% 性能)
+#
+# 推荐配置：
+#   1. 开发/生产 → 本地部署 (./start.sh)
+#   2. 测试/演示 → Docker 部署 (./docker-start.sh)
+#
+# 详见: PERFORMANCE.md
+
 version: '3.8'
 
 services:
@@ -37,15 +54,24 @@ services:
 
     restart: unless-stopped
 
-    # 资源限制（根据你的机器调整）
+    # 资源限制配置
+    # ⚠️ macOS Docker 特殊说明：
+    #   - Docker 容器运行在 Linux VM 中，无法直接访问 macOS GPU
+    #   - MLX 会自动使用 CPU，性能约为本地运行的 60-70%
+    #   - 如果需要最佳性能，建议使用本地部署（./start.sh）
+    #   - 下面的限制仅影响容器内的资源，不影响宿主机
+    #
+    # 推荐配置（Apple Silicon）：
+    #   - 移除所有限制以获得最佳性能
+    #   - 或设置宽松的限制（保留以下配置）
     deploy:
       resources:
         limits:
-          cpus: '4'      # CPU 核心数
-          memory: 8G    # 最大内存
+          cpus: '8'      # CPU 限制（8核 = 无限制，即使用所有性能核心）
+          memory: 16G   # 内存限制（根据你的机器调整）
         reservations:
-          cpus: '2'
-          memory: 4G
+          cpus: '4'     # 保留资源（确保最小性能）
+          memory: 8G    # 保留内存
 
     # 健康检查
     healthcheck:
