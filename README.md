@@ -42,25 +42,38 @@ GEMINI_API_KEY=your-key-here
 AI_PROVIDER=ollama
 ```
 
-### 3. 启动后端
+### 3. 启动应用
+
+**方式一：一键启动（推荐）**
 
 ```bash
+# 在项目根目录
+./start-all.sh
+```
+
+这会自动启动后端和前端应用。
+
+**方式二：分别启动**
+
+```bash
+# 终端 1：启动后端
+cd PythonService
+./start.sh
+
+# 终端 2：启动前端
+cd TypelessApp
 ./start.sh
 ```
 
-### 4. 启动前端
+### 4. 停止服务
 
 ```bash
-# 新开一个终端
-cd TypelessApp
-swift run TypelessApp
-```
+# 在项目根目录（停止所有）
+./stop-all.sh
 
-### 5. 停止服务
-
-```bash
-cd PythonService
-./stop.sh
+# 或分别停止
+cd PythonService && ./stop.sh
+cd TypelessApp && ./stop.sh
 ```
 
 ## 📖 完整文档
@@ -101,20 +114,31 @@ cd PythonService
 
 ```
 typeless_2/
-├── PythonService/          # Python 后端服务
+├── start-all.sh           # 一键启动脚本
+├── stop-all.sh            # 一键停止脚本
+├── PythonService/         # Python 后端服务
+│   ├── runtime/           # 运行时目录
+│   │   ├── logs/          # 日志文件
+│   │   ├── models/        # 模型缓存
+│   │   └── tmp/           # 临时文件
 │   ├── src/
 │   │   ├── api/           # FastAPI 服务
 │   │   ├── asr/           # Whisper ASR
 │   │   └── ai/            # AI 后处理
-│   ├── start.sh           # 启动脚本
-│   ├── stop.sh            # 停止脚本
+│   ├── start.sh           # 后端启动脚本
+│   ├── stop.sh            # 后端停止脚本
 │   └── DEPLOYMENT.md      # 详细部署文档
 └── TypelessApp/           # Swift 前端应用
-    └── Sources/
-        ├── App/           # 应用入口
-        ├── Core/          # 核心模块
-        ├── Services/      # API 服务
-        └── Resources/     # 资源文件
+    ├── runtime/           # 运行时目录
+    │   ├── logs/          # 应用日志
+    │   └── tmp/           # 临时文件
+    ├── Sources/
+    │   ├── App/           # 应用入口
+    │   ├── Core/          # 核心模块
+    │   ├── Services/      # API 服务
+    │   └── Resources/     # 资源文件
+    ├── start.sh           # 前端启动脚本
+    └── stop.sh            # 前端停止脚本
 ```
 
 ## 配置说明
@@ -193,6 +217,9 @@ uv run pytest tests/test_asr.py
 ```bash
 # 后端日志
 tail -f PythonService/runtime/logs/server.log
+
+# 前端日志
+tail -f TypelessApp/runtime/logs/app-*.log
 ```
 
 ## 文档
