@@ -61,7 +61,12 @@ class SileroVAD:
     def _get_cache_dir(self) -> str:
         """Get cache directory for models"""
         import os
-        cache_dir = os.path.expanduser("~/.cache/typeless")
+        # Get project root (PythonService directory)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+
+        # Use runtime/models/vad for VAD models
+        cache_dir = os.path.join(project_root, "runtime", "models", "vad")
         os.makedirs(cache_dir, exist_ok=True)
         return cache_dir
 
