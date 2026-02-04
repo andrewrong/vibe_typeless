@@ -2,31 +2,72 @@
 
 基于 MLX Whisper 的本地 ASR 服务，配合 AI 文本后处理。
 
-## 快速开始
+## 快速开始（本地部署）
 
-### 选择部署方式
+> 💡 **推荐**：本地部署提供最佳性能（100% GPU 加速），适合开发和生产环境。
 
-**方式 1: 本地部署** (推荐开发环境)
+### 1. 安装依赖
+
 ```bash
 cd PythonService
+
+# 安装 uv（如果还没有）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 安装项目依赖
+uv sync
+```
+
+### 2. 配置环境
+
+```bash
+# 复制配置文件
+cp .env.example .env
+
+# 编辑配置，添加 API 密钥
+nano .env  # 或使用其他编辑器
+```
+
+**必须配置以下之一：**
+```bash
+# OpenAI（推荐）
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-your-key-here
+
+# Google Gemini
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your-key-here
+
+# Ollama（本地免费）
+AI_PROVIDER=ollama
+```
+
+### 3. 启动后端
+
+```bash
 ./start.sh
 ```
 
-**方式 2: Docker 部署** (推荐生产环境)
+### 4. 启动前端
+
 ```bash
-cd PythonService
-./docker-start.sh
+# 新开一个终端
+cd TypelessApp
+swift run TypelessApp
 ```
 
-> 💡 **提示**: Docker 部署提供更好的隔离性和可移植性。详见 [Docker 部署指南](PythonService/DOCKER.md) 或 [部署方式对比](PythonService/DEPLOYMENT_COMPARISON.md)
+### 5. 停止服务
 
-### 首次运行需要：
+```bash
+cd PythonService
+./stop.sh
+```
 
-1. 配置 `.env` 文件（添加 AI API 密钥）
-2. 等待下载 Whisper 模型（~3GB）
-3. 启动完成会提示启动 Swift 应用
+## 📖 完整文档
 
-### 3. 启动 Swift 应用
+- [本地部署指南](PythonService/LOCAL_DEPLOYMENT.md) - 详细的本地部署步骤
+- [完整部署指南](PythonService/DEPLOYMENT.md) - 包含所有部署选项
+- [性能优化指南](PythonService/PERFORMANCE.md) - 性能对比和优化建议
 
 ```bash
 # 新开一个终端
