@@ -3,8 +3,19 @@
 
 set -e
 
-PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
-cd "$PROJECT_ROOT"
+# 获取项目根目录（脚本所在目录的父目录）
+if [ -f "docker-start.sh" ] && [ -f "pyproject.toml" ]; then
+    # 已经在 PythonService 目录中
+    PROJECT_ROOT="$(pwd)"
+    cd ..
+elif [ -d "PythonService" ] && [ -f "PythonService/docker-start.sh" ]; then
+    # 在项目根目录，进入 PythonService
+    PROJECT_ROOT="$(pwd)"
+    cd PythonService
+else
+    echo "❌ 错误：无法找到项目目录"
+    exit 1
+fi
 
 echo "🐳 启动 Typeless Docker 服务..."
 echo ""

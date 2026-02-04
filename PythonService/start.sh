@@ -3,8 +3,21 @@
 
 set -e
 
-PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
-cd "$PROJECT_ROOT/PythonService"
+# 检查当前目录是否正确
+if [ -f "start.sh" ] && [ -f "pyproject.toml" ]; then
+    # 已经在 PythonService 目录中
+    PROJECT_ROOT="$(pwd)"
+elif [ -d "PythonService" ] && [ -f "PythonService/start.sh" ]; then
+    # 在项目根目录，进入 PythonService
+    PROJECT_ROOT="$(pwd)"
+    cd PythonService
+else
+    echo "❌ 错误：无法找到项目目录"
+    echo "   请确保从以下位置之一执行此脚本："
+    echo "   1. PythonService 目录: cd PythonService && ./start.sh"
+    echo "   2. 项目根目录: ./PythonService/start.sh"
+    exit 1
+fi
 
 echo "🚀 启动 Typeless 服务..."
 echo ""
@@ -43,7 +56,7 @@ if curl -s http://127.0.0.1:28111/health > /dev/null 2>&1; then
     echo "✅ 后端服务启动成功 (PID: $BACKEND_PID)"
 else
     echo "❌ 后端服务启动失败，请查看日志:"
-    echo "   tail -f $PROJECT_ROOT/PythonService/logs/server.log"
+    echo "   tail -f logs/server.log"
     exit 1
 fi
 
@@ -56,10 +69,10 @@ echo "   - 文档: http://127.0.0.1:28111/docs"
 echo "   - 健康检查: http://127.0.0.1:28111/health"
 echo ""
 echo "📋 后端日志:"
-echo "   tail -f $PROJECT_ROOT/PythonService/logs/server.log"
+echo "   tail -f logs/server.log"
 echo ""
 echo "🚀 启动 Swift 应用:"
-echo "   cd $PROJECT_ROOT/../TypelessApp"
+echo "   cd ../TypelessApp"
 echo "   swift run TypelessApp"
 echo ""
 echo "🛑 停止服务:"
