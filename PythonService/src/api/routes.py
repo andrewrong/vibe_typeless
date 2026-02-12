@@ -193,21 +193,20 @@ sessions: Dict[str, Dict] = {}
 asr_model = None
 
 
-def get_asr_model():
+def _get_asr_model_instance():
     """
     Get or create ASR model instance
 
     Model selection is controlled in src/asr/__init__.py
-    Change MODEL_TYPE there to switch between Whisper and VibeVoice
+    Change MODEL_TYPE there to switch between Whisper, VibeVoice, or SenseVoice
     """
     global asr_model
 
-    # Import from factory
-    from src.asr import get_asr_model as get_model
+    # Import from factory (avoid naming conflict with this function)
+    from src.asr import get_asr_model
 
-    # Get model from factory (creates new instance each time for now)
-    # Could be optimized to cache if needed
-    return get_model()
+    # Get model from factory (singleton pattern)
+    return get_asr_model()
 
 
 @router.post("/start", response_model=SessionStartResponse)
@@ -292,7 +291,7 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
 
         try:
             # Apply audio pipeline for preview (faster, no VAD for speed)
-            model = get_asr_model()
+            model = _get_asr_model_instance()
 
             # For preview, skip VAD to save time
             from src.asr.audio_pipeline import AudioEnhancer
@@ -352,7 +351,7 @@ async def stop_session(session_id: str):
     logger.info(f"   Config: punctuation={power_config['add_punctuation']}, technical={power_config['technical_terms']}")
 
     # Combine all audio chunks and get final transcript
-    model = get_asr_model()
+    model = _get_asr_model_instance()
 
     # Handle empty audio chunks
     if session["audio_chunks"]:
@@ -495,7 +494,7 @@ async def transcribe_file(request: bytes = Body(..., media_type='application/oct
     audio_array = np.frombuffer(request, dtype=np.int16)
 
     # Get duration
-    model = get_asr_model()
+    model = _get_asr_model_instance()
     duration = len(audio_array) / model.config.sample_rate
 
     # Transcribe
@@ -542,13 +541,15 @@ async def get_model_config():
     Returns:
         Current model configuration and available models
     """
-    config = model_manager.config
+    # Get model from new factory (supports Whisper, VibeVoice, SenseVoice)
+    model = _get_asr_model_instance()
+    config = model.config
 
     return ModelConfigResponse(
         current_model=config.model_size,
         language=config.language,
         fp16=config.fp16,
-        available_models=ModelSize.all()
+        available_models=["tiny", "base", "small", "medium", "large-v3", "sensevoice"]
     )
 
 
@@ -822,7 +823,7 @@ async def websocket_stream(websocket: WebSocket):
 
     session_id = str(uuid.uuid4())
     audio_chunks = []
-    model = get_asr_model()
+    model = _get_asr_model_instance()
     started = False
 
     try:
@@ -1107,7 +1108,7 @@ async def upload_audio_file(
 
         # Transcribe (convert normalized float32 back to int16)
         audio_int16 = (audio_array * 32767).astype(np.int16)
-        model = get_asr_model()
+        model = _get_asr_model_instance()
         transcript = model.transcribe(audio_int16)
 
         # Apply post-processing if requested
@@ -1194,7 +1195,7 @@ async def upload_long_audio(
     try:
         # Transcribe function wrapper
         def transcribe_fn(audio_int16):
-            model = get_asr_model()
+            model = _get_asr_model_instance()
             return model.transcribe(audio_int16)
 
         # Process long audio
@@ -1333,7 +1334,7 @@ async def batch_transcribe(
                 audio_int16 = (audio_array * 32767).astype(np.int16)
 
                 # Transcribe
-                model = get_asr_model()
+                model = _get_asr_model_instance()
 
                 if use_long_audio:
                     # Use long audio processing
@@ -1437,7 +1438,7 @@ async def submit_job(
         from asr.long_audio import process_long_audio
 
         def transcribe_fn(audio):
-            model = get_asr_model()
+            model = _get_asr_model_instance()
             return model.transcribe(audio)
 
         transcript, metadata = process_long_audio(
