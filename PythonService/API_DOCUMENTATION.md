@@ -191,24 +191,91 @@ Typeless Service 是一个高性能的语音识别（ASR）服务，支持实时
 ---
 
 #### POST /api/postprocess/upload-long
-上传长音频文件（自动分段处理）。
+上传长音频文件（**> 30 秒**，自动分段处理）。
 
-**请求体**: 同 `/upload`
+**Content-Type**: `multipart/form-data`
+
+**请求参数**:
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `file` | File | ✅ | - | 音频文件 (WAV, MP3, M4A, FLAC, OGG, AAC) |
+| `strategy` | string | ❌ | `hybrid` | 分段策略: `fixed` / `vad` / `hybrid` |
+| `merge_strategy` | string | ❌ | `simple` | 合并策略: `simple` / `overlap` / `smart` |
+| `apply_postprocess` | bool | ❌ | `true` | 是否应用后处理 |
+
+**参数说明**:
+
+- **strategy** - 分段策略
+  - `fixed`: 固定 30 秒分段（最简单）
+  - `vad`: 基于语音活动检测分段（智能）
+  - `hybrid`: VAD + 固定分段混合（**推荐**）
+
+- **merge_strategy** - 合并策略
+  - `simple`: 直接拼接（最快）
+  - `overlap`: 重叠区域去重
+  - `smart`: 智能合并（**推荐**，效果最佳）
 
 **响应示例**:
 ```json
 {
-  "filename": "long_recording.mp3",
-  "success": true,
-  "transcript": "完整的长文本内容...",
-  "duration": 120.0,
-  "segments": 5,
+  "transcript": "完整转录文本...",
+  "processed_transcript": "处理后的文本（带标点）...",
+  "audio_metadata": {
+    "duration": 120.5,
+    "sample_rate": 16000,
+    "num_segments": 5,
+    "strategy": "hybrid"
+  },
   "processing_stats": {
-    "total_segments": 5,
-    "silence_removed": 3.2
-  }
+    "num_segments": 5,
+    "strategy": "hybrid",
+    "merge_strategy": "smart",
+    "postprocess_stats": {
+      "chars_added": 10
+    }
+  },
+  "segments": [
+    {"segment_index": 0, "duration": 24.0},
+    {"segment_index": 1, "duration": 25.5}
+  ]
 }
 ```
+
+**与 `/upload` 的区别**:
+
+| 特性 | `/upload` | `/upload-long` |
+|------|-----------|----------------|
+| 适合时长 | < 30 秒 | > 30 秒 |
+| 分段处理 | 否 | ✅ 是 |
+| 智能合并 | 否 | ✅ 是 |
+| 处理时间 | 快 (~0.5s) | 较慢 (分段数 × 0.5s) |
+
+**使用示例**:
+```python
+import requests
+
+url = "http://127.0.0.1:28111/api/postprocess/upload-long"
+
+with open("5_minutes_meeting.mp3", "rb") as f:
+    files = {"file": f}
+    data = {
+        "strategy": "hybrid",        # 推荐
+        "merge_strategy": "smart",   # 推荐
+        "apply_postprocess": "true"
+    }
+
+    response = requests.post(url, files=files, data=data, timeout=120)
+    result = response.json()
+
+print(f"转录: {result['transcript']}")
+print(f"分段: {result['processing_stats']['num_segments']}")
+```
+
+**超时建议**:
+- 1-2 分钟: 30 秒超时
+- 3-5 分钟: 60 秒超时
+- 5-10 分钟: 120 秒超时
 
 ---
 
