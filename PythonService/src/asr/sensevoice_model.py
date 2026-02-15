@@ -81,7 +81,7 @@ class SenseVoiceASR:
         self.recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=str(model_file),
             tokens=str(tokens_file),
-            use_itn=False,  # Disable ITN to preserve spaces in English
+            use_itn=True,  # Enable ITN for better Chinese punctuation
             debug=False,
             num_threads=4,  # Use 4 threads for M-series chips
             language=self.language,
