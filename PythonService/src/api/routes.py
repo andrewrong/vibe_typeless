@@ -306,7 +306,7 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
             enhanced_int16 = (enhanced * 32767).astype(np.int16)
 
             # Transcribe
-            partial_transcript = model.transcribe(enhanced_int16, language="zh")
+            partial_transcript = model.transcribe(enhanced_int16, language="auto")
 
             # Apply processing for preview (punctuation + dictionary)
             if partial_transcript:
@@ -384,7 +384,7 @@ async def stop_session(session_id: str):
         for i, segment in enumerate(processed_segments):
             logger.info(f"   Transcribing segment {i+1}/{len(processed_segments)} "
                        f"({len(segment)} samples)")
-            segment_transcript = model.transcribe(segment, language="zh")
+            segment_transcript = model.transcribe(segment, language="auto")
             if segment_transcript:
                 transcripts.append(segment_transcript)
 
@@ -504,7 +504,7 @@ async def transcribe_file(request: bytes = Body(..., media_type='application/oct
     duration = len(audio_array) / model.config.sample_rate
 
     # Transcribe
-    transcript = model.transcribe(audio_array, language="zh")
+    transcript = model.transcribe(audio_array, language="auto")
 
     return FileTranscribeResponse(
         transcript=transcript,
@@ -854,7 +854,7 @@ async def websocket_stream(websocket: WebSocket):
                     # Stop streaming and send final result
                     if audio_chunks:
                         all_audio = np.concatenate(audio_chunks)
-                        final_transcript = model.transcribe(all_audio, language="zh")
+                        final_transcript = model.transcribe(all_audio, language="auto")
                     else:
                         final_transcript = ""
 
@@ -871,7 +871,7 @@ async def websocket_stream(websocket: WebSocket):
                 audio_chunks.append(audio_array)
 
                 # Transcribe chunk
-                transcript = model.transcribe(audio_array, language="zh")
+                transcript = model.transcribe(audio_array, language="auto")
 
                 # Send partial result
                 await websocket.send_json({
@@ -1048,7 +1048,7 @@ async def upload_audio_file(
     remove_silence: bool = False,
     normalize_volume: bool = False,
     detect_silence_only: bool = False,
-    language: str = "zh"
+    language: str = "auto"
 ):
     """
     Upload and process audio file (for short audio < 30s)
@@ -1161,7 +1161,7 @@ class LongAudioProcessResponse(BaseModel):
 async def upload_long_audio(
     file: UploadFile = File(...),
     apply_postprocess: bool = True,
-    language: str = "zh"
+    language: str = "auto"
 ):
     """
     Upload and process long audio file (> 30 seconds)
