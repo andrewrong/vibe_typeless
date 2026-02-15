@@ -309,7 +309,7 @@ def process_long_audio(
     Returns:
         Tuple of (full_transcript, metadata)
     """
-    from asr.audio_processor import AudioProcessor
+    from src.asr.audio_processor import AudioProcessor
 
     # Load audio
     processor = AudioProcessor()
@@ -340,6 +340,7 @@ def process_long_audio(
 
         # Transcribe
         text = transcribe_fn(audio_int16)
+        print(f"    -> Transcript: '{text}'")
 
         transcripts.append(TranscriptionSegment(
             text=text,

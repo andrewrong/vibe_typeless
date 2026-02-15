@@ -30,13 +30,14 @@ class SenseVoiceASR:
         runtime/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/
     """
 
-    def __init__(self, model_path: Optional[str] = None, use_int8: bool = True):
+    def __init__(self, model_path: Optional[str] = None, use_int8: bool = True, language: str = "auto"):
         """
         Initialize SenseVoice model
 
         Args:
             model_path: Path to model directory (auto-detect if None)
             use_int8: Use int8 quantized model (faster, slightly less accurate)
+            language: Language code ("auto", "zh", "en", "ja", "ko", "yue")
         """
         # Auto-detect model path
         if model_path is None:
@@ -75,17 +76,20 @@ class SenseVoiceASR:
         logger.info(f"   Model: {model_file.name}")
         logger.info(f"   Tokens: {tokens_file}")
 
-        # Create recognizer
+        # Create recognizer with specified language
+        self.language = language if language != "auto" else ""
         self.recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=str(model_file),
             tokens=str(tokens_file),
             use_itn=True,  # Inverse text normalization ("一" -> "1")
             debug=False,
             num_threads=4,  # Use 4 threads for M-series chips
+            language=self.language,
         )
 
         self.model_path = model_path
         self.use_int8 = use_int8
+        logger.info(f"   Language: {language if language else 'auto'}")
 
         logger.info("✅ SenseVoice model loaded successfully")
 

@@ -7,6 +7,8 @@ import uuid
 import logging
 from typing import Dict, Optional, List
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Body, UploadFile, File
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import numpy as np
@@ -193,20 +195,24 @@ sessions: Dict[str, Dict] = {}
 asr_model = None
 
 
-def _get_asr_model_instance():
+def _get_asr_model_instance(language: str = "auto"):
     """
     Get or create ASR model instance
 
     Model selection is controlled in src/asr/__init__.py
     Change MODEL_TYPE there to switch between Whisper, VibeVoice, or SenseVoice
+
+    Args:
+        language: Language code ("auto", "zh", "en", "ja", "ko", "yue")
+                Only used for SenseVoice. Defaults to "auto".
     """
     global asr_model
 
     # Import from factory (avoid naming conflict with this function)
     from src.asr import get_asr_model
 
-    # Get model from factory (singleton pattern)
-    return get_asr_model()
+    # Get model from factory (singleton pattern per language)
+    return get_asr_model(language=language)
 
 
 @router.post("/start", response_model=SessionStartResponse)
@@ -498,7 +504,7 @@ async def transcribe_file(request: bytes = Body(..., media_type='application/oct
     duration = len(audio_array) / model.config.sample_rate
 
     # Transcribe
-    transcript = model.transcribe(audio_array)
+    transcript = model.transcribe(audio_array, language="zh")
 
     return FileTranscribeResponse(
         transcript=transcript,
@@ -848,7 +854,7 @@ async def websocket_stream(websocket: WebSocket):
                     # Stop streaming and send final result
                     if audio_chunks:
                         all_audio = np.concatenate(audio_chunks)
-                        final_transcript = model.transcribe(all_audio)
+                        final_transcript = model.transcribe(all_audio, language="zh")
                     else:
                         final_transcript = ""
 
@@ -865,7 +871,7 @@ async def websocket_stream(websocket: WebSocket):
                 audio_chunks.append(audio_array)
 
                 # Transcribe chunk
-                transcript = model.transcribe(audio_array)
+                transcript = model.transcribe(audio_array, language="zh")
 
                 # Send partial result
                 await websocket.send_json({
@@ -1041,7 +1047,8 @@ async def upload_audio_file(
     apply_postprocess: bool = True,
     remove_silence: bool = False,
     normalize_volume: bool = False,
-    detect_silence_only: bool = False
+    detect_silence_only: bool = False,
+    language: str = "zh"
 ):
     """
     Upload and process audio file (for short audio < 30s)
@@ -1052,6 +1059,7 @@ async def upload_audio_file(
         remove_silence: Whether to remove silence from audio
         normalize_volume: Whether to normalize volume
         detect_silence_only: Only detect silence, don't transcribe
+        language: Language code - "zh" (Chinese), "en" (English), "ja" (Japanese), "ko" (Korean), "yue" (Cantonese), or "auto" (auto-detect)
 
     Returns:
         Transcription with optional post-processing
@@ -1109,7 +1117,7 @@ async def upload_audio_file(
         # Transcribe (convert normalized float32 back to int16)
         audio_int16 = (audio_array * 32767).astype(np.int16)
         model = _get_asr_model_instance()
-        transcript = model.transcribe(audio_int16)
+        transcript = model.transcribe(audio_int16, language=language)
 
         # Apply post-processing if requested
         processed_transcript = None
@@ -1152,25 +1160,24 @@ class LongAudioProcessResponse(BaseModel):
 @postprocess_router.post("/upload-long", response_model=LongAudioProcessResponse)
 async def upload_long_audio(
     file: UploadFile = File(...),
-    strategy: str = "hybrid",
-    merge_strategy: str = "simple",
-    apply_postprocess: bool = True
+    apply_postprocess: bool = True,
+    language: str = "zh"
 ):
     """
     Upload and process long audio file (> 30 seconds)
 
-    Uses intelligent chunking to handle audio longer than Whisper's 30-second limit.
+    Uses the same AudioPipeline as real-time ASR for consistent results.
 
     Args:
         file: Audio file (WAV, MP3, M4A, etc.)
-        strategy: Chunking strategy - "fixed" (30s chunks), "vad" (speech detection), or "hybrid" (VAD + fixed)
-        merge_strategy: How to merge transcripts - "simple", "overlap", or "smart"
         apply_postprocess: Whether to apply text post-processing
+        language: Language code - "zh" (Chinese), "en" (English), "ja" (Japanese), "ko" (Korean), "yue" (Cantonese), or "auto" (auto-detect)
 
     Returns:
         Full transcription with segment information
     """
-    from asr.long_audio import LongAudioProcessor, process_long_audio
+    # Log incoming request parameters
+    logger.info(f"📥 upload-long request: file={file.filename}, apply_postprocess={apply_postprocess}, language={language}")
 
     # Get file format from extension
     file_format = file.filename.split('.')[-1] if '.' in file.filename else None
@@ -1184,27 +1191,40 @@ async def upload_long_audio(
     # Read file data
     file_data = await file.read()
 
-    # Save to temporary file
-    import tempfile
-    import os
-
-    with tempfile.NamedTemporaryFile(suffix=f".{file_format}", delete=False) as tmp_file:
-        tmp_file.write(file_data)
-        tmp_file_path = tmp_file.name
-
     try:
-        # Transcribe function wrapper
-        def transcribe_fn(audio_int16):
-            model = _get_asr_model_instance()
-            return model.transcribe(audio_int16)
+        # Use same pipeline as real-time ASR (AudioPipeline)
+        from src.asr.audio_pipeline import AudioPipeline
+        from src.asr.audio_processor import AudioProcessor
 
-        # Process long audio
-        full_transcript, metadata = process_long_audio(
-            audio_path=tmp_file_path,
-            transcribe_fn=transcribe_fn,
-            strategy=strategy,
-            merge_strategy=merge_strategy
+        # Load and convert audio (same as /upload endpoint)
+        audio_processor = AudioProcessor()
+        audio_array, metadata = audio_processor.process_audio_file(
+            file_data=file_data,
+            file_format=file_format
         )
+
+        # Process with AudioPipeline (same as real-time ASR)
+        pipeline = AudioPipeline(
+            vad_threshold=0.5,
+            enable_enhancement=True,
+            enable_vad=True
+        )
+
+        processed_segments, stats = pipeline.process(audio_array)
+        logger.info(f"   AudioPipeline: {stats['segments']} segments, removed {stats['silence_removed'] / 16000:.2f}s silence")
+
+        # Transcribe all segments (same as real-time ASR stop endpoint)
+        model = _get_asr_model_instance(language=language)
+        transcripts = []
+
+        for i, segment in enumerate(processed_segments):
+            logger.info(f"   Transcribing segment {i+1}/{len(processed_segments)} ({len(segment)} samples)")
+            segment_transcript = model.transcribe(segment, language=language)
+            if segment_transcript:
+                transcripts.append(segment_transcript)
+
+        # Join transcripts
+        full_transcript = " ".join(transcripts) if transcripts else ""
 
         # Apply post-processing if requested
         processed_transcript = None
@@ -1219,15 +1239,14 @@ async def upload_long_audio(
             processed_transcript=processed_transcript,
             audio_metadata=metadata,
             processing_stats={
-                "num_segments": metadata.get("num_segments", 0),
-                "strategy": metadata.get("strategy", strategy),
-                "merge_strategy": metadata.get("merge_strategy", merge_strategy),
+                "num_segments": len(processed_segments),
+                "strategy": "audio_pipeline",
                 "postprocess_stats": postprocess_stats
             },
             segments=[{
                 "segment_index": i,
-                "duration": metadata.get("segment_durations", [])[i] if i < len(metadata.get("segment_durations", [])) else 0
-            } for i in range(metadata.get("num_segments", 0))]
+                "duration": len(segment) / 16000
+            } for i, segment in enumerate(processed_segments)]
         )
 
     except Exception as e:
@@ -1235,10 +1254,6 @@ async def upload_long_audio(
             status_code=500,
             detail=f"Error processing long audio file: {str(e)}"
         )
-    finally:
-        # Clean up temp file
-        if os.path.exists(tmp_file_path):
-            os.unlink(tmp_file_path)
 
 
 # Batch transcription models
@@ -1338,7 +1353,7 @@ async def batch_transcribe(
 
                 if use_long_audio:
                     # Use long audio processing
-                    from asr.long_audio import process_long_audio
+                    from src.asr.long_audio import process_long_audio
 
                     def transcribe_fn(audio):
                         return model.transcribe(audio)
@@ -1435,7 +1450,7 @@ async def submit_job(
 
     # Define the task
     async def process_task():
-        from asr.long_audio import process_long_audio
+        from src.asr.long_audio import process_long_audio
 
         def transcribe_fn(audio):
             model = _get_asr_model_instance()
