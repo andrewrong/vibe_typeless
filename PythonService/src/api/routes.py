@@ -1148,6 +1148,89 @@ class LongAudioProcessRequest(BaseModel):
     apply_postprocess: bool = True
 
 
+def smart_split_segments(segments: List[np.ndarray],
+                         max_duration: float = 20.0,
+                         min_duration: float = 10.0,
+                         sample_rate: int = 16000) -> List[np.ndarray]:
+    """
+    Intelligently split long segments at natural pause points
+
+    Uses energy-based detection to find low-energy regions (pauses) for splitting.
+    This maintains sentence integrity better than fixed-length splitting.
+
+    Args:
+        segments: List of audio segments from VAD
+        max_duration: Maximum segment duration in seconds
+        min_duration: Minimum segment duration in seconds (don't split shorter than this)
+        sample_rate: Audio sample rate
+
+    Returns:
+        List of split segments
+    """
+    max_samples = int(max_duration * sample_rate)
+    min_samples = int(min_duration * sample_rate)
+    search_window = int(3 * sample_rate)  # Look for pause in 3-second window
+
+    result = []
+
+    for seg in segments:
+        if len(seg) <= max_samples:
+            # Segment is short enough, keep as-is
+            result.append(seg)
+            continue
+
+        # Segment is too long, need to split
+        current_pos = 0
+
+        while current_pos < len(seg):
+            remaining = len(seg) - current_pos
+
+            if remaining <= max_samples:
+                # Last piece is short enough
+                result.append(seg[current_pos:])
+                break
+
+            # Find the best split point
+            # Search range: from (current_pos + min_samples) to (current_pos + max_samples)
+            # But also search within a window before max_samples for natural pause
+            search_start = current_pos + min_samples
+            search_end = min(current_pos + max_samples, len(seg))
+            preferred_split = current_pos + max_samples - search_window // 2
+
+            # Look for low-energy point (pause) in the search window
+            best_split = search_end  # Default to max if no good pause found
+            min_energy = float('inf')
+
+            # Search in window around preferred split point
+            window_start = max(search_start, preferred_split - search_window // 2)
+            window_end = min(search_end, preferred_split + search_window // 2)
+
+            # Calculate energy in small windows (100ms)
+            window_size = sample_rate // 10  # 100ms
+
+            for pos in range(window_start, window_end - window_size, window_size // 2):
+                window = seg[pos:pos + window_size]
+                if len(window) < window_size:
+                    break
+
+                # RMS energy
+                energy = np.sqrt(np.mean(window.astype(np.float32) ** 2))
+
+                if energy < min_energy:
+                    min_energy = energy
+                    best_split = pos
+
+            # Split at best point
+            result.append(seg[current_pos:best_split])
+            current_pos = best_split
+
+            logger.debug(f"   Smart split at {best_split/sample_rate:.1f}s (energy={min_energy:.1f})")
+
+    logger.info(f"   Smart split: {len(segments)} → {len(result)} segments "
+                f"(target {min_duration}-{max_duration}s)")
+    return result
+
+
 class LongAudioProcessResponse(BaseModel):
     """Response for long audio file processing"""
     transcript: str
@@ -1212,6 +1295,15 @@ async def upload_long_audio(
 
         processed_segments, stats = pipeline.process(audio_array)
         logger.info(f"   AudioPipeline: {stats['segments']} segments, removed {stats['silence_removed'] / 16000:.2f}s silence")
+
+        # Smart split long segments at natural pause points (energy-based)
+        # This balances sentence integrity with model performance
+        processed_segments = smart_split_segments(
+            processed_segments,
+            max_duration=20.0,   # Split segments longer than 20s
+            min_duration=8.0,    # Keep segments at least 8s
+            sample_rate=16000
+        )
 
         # Transcribe all segments (same as real-time ASR stop endpoint)
         model = _get_asr_model_instance(language=language)
