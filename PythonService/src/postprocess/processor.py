@@ -242,12 +242,17 @@ class TextProcessor:
 
         return ''.join(punctuated)
 
-    def process(self, text: str) -> ProcessResult:
+    def process(self, text: str, mode: str = "standard") -> ProcessResult:
         """
-        Apply full processing pipeline
+        Apply processing pipeline with configurable mode
 
         Args:
             text: Input text
+            mode: Processing mode - "none", "basic", "standard", "advanced"
+                - none: No processing (fastest)
+                - basic: Remove duplicates + punctuation correction only
+                - standard: Full rule-based processing (default)
+                - advanced: Standard + AI enhancement (slowest, best quality)
 
         Returns:
             ProcessResult with processed text and stats
@@ -260,13 +265,37 @@ class TextProcessor:
                 "total_changes": 0
             })
 
+        # Mode: none - return as-is
+        if mode == "none":
+            return ProcessResult(original=text, processed=text, stats={
+                "fillers_removed": 0,
+                "duplicates_removed": 0,
+                "corrections_applied": 0,
+                "total_changes": 0,
+                "mode": "none"
+            })
+
         stats = {
             "fillers_removed": 0,
             "duplicates_removed": 0,
             "corrections_applied": 0,
-            "total_changes": 0
+            "total_changes": 0,
+            "mode": mode
         }
 
+        result = text
+
+        # Mode: basic - minimal processing
+        if mode == "basic":
+            # Only remove duplicates and fix punctuation
+            before_dup = len(result)
+            result = self.remove_duplicates(result)
+            stats["duplicates_removed"] = before_dup - len(result)
+            result = self.punctuation_corrector.correct(result)
+            stats["total_changes"] = stats["duplicates_removed"]
+            return ProcessResult(original=text, processed=result.strip(), stats=stats)
+
+        # Mode: standard or advanced - full rule-based processing
         original_length = len(text)
 
         # Step 1: Remove fillers

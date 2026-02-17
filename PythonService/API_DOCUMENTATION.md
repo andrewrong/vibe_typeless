@@ -6,7 +6,7 @@ Typeless Service 是一个高性能的语音识别（ASR）服务，支持实时
 
 ## 服务信息
 
-- **版本**: 0.2.0
+- **版本**: 0.3.0
 - **基础 URL**: `http://127.0.0.1:28111`
 - **API 文档**: `http://127.0.0.1:28111/docs` (Swagger UI)
 - **OpenAPI**: `http://127.0.0.1:28111/openapi.json`
@@ -172,47 +172,68 @@ Typeless Service 是一个高性能的语音识别（ASR）服务，支持实时
 - Content-Type: `multipart/form-data`
 - 字段:
   - `file`: 音频文件 (wav, mp3, m4a, flac, ogg, aac)
-  - `language`: 语言代码 (可选，默认 "zh")
-  - `apply_postprocess`: 是否应用后处理 (可选，默认 true)
+  - `language`: 语言代码 (可选，默认 "auto")
+  - `postprocess_mode`: 后处理模式 (可选，默认 "standard")
+    - `none`: 不做后处理（最快）
+    - `basic`: 基础处理（去重复 + 标点）
+    - `standard`: 标准处理（填充词移除、修正、格式化）
+    - `advanced`: 高级处理（标准 + AI 增强，质量最高）
 
 **响应示例**:
 ```json
 {
-  "filename": "recording.wav",
-  "success": true,
-  "transcript": "识别的文本内容",
-  "duration": 10.5,
-  "processing_stats": {
-    "segments": 1,
-    "silence_removed": 0.5
-  }
-}
-```
-
-**响应示例**:
-```json
-{
-  "transcript": "你能听到我在说话吗？我感觉你这个翻译有点问题。",
-  "processed_transcript": "你能听到我在说话吗？我感觉你这个翻译有点问题。",
+  "transcript": "大年三十除夕我和女儿刘总在吉隆坡马来西亚过年",
+  "processed_transcript": "大年三十除夕，我和女儿刘总在吉隆坡、马来西亚过年。",
   "audio_metadata": {
-    "duration": 3.734,
-    "sample_rate": 16000
+    "duration": 10.5,
+    "sample_rate": 16000,
+    "channels": 1,
+    "bit_depth": 16
   },
   "processing_stats": {
     "postprocess_stats": {
-      "fillers_removed": 0,
-      "duplicates_removed": 0
+      "fillers_removed": 2,
+      "duplicates_removed": 0,
+      "corrections_applied": 1,
+      "total_changes": 3,
+      "mode": "standard"
+    }
+  },
+  "silence_regions": null
+}
+```
+
+**AI 增强模式示例** (`postprocess_mode=advanced`):
+```json
+{
+  "transcript": "天是大年3十除夕我和女儿刘总在吉隆坡马来西亚过年",
+  "processed_transcript": "大年三十除夕，我和女儿刘总在吉隆坡、马来西亚过年。我们和女儿的朋友 Elda 一家一起过年，孩子们玩得很开心。",
+  "processing_stats": {
+    "postprocess_stats": {
+      "mode": "advanced",
+      "ai_enhanced": true,
+      "ai_provider": "openai",
+      "ai_model": "gpt-4o-mini"
     }
   }
 }
 ```
 
+**后处理模式对比**:
+
+| 模式 | 速度 | 处理内容 | 适用场景 |
+|------|------|----------|----------|
+| `none` | ⚡ 最快 | 不做任何处理 | 实时性要求最高 |
+| `basic` | 🚀 快 | 去重复词 + 标点修正 | 轻度处理 |
+| `standard` | ✅ 推荐 | 填充词移除 + 去重 + 修正 + 格式化 | 日常使用（默认） |
+| `advanced` | 🐢 较慢 | Standard + AI 增强润色 | 高质量文档输出 |
+
 ---
 
 #### POST /api/postprocess/upload-long
-**上传长音频文件（> 30 秒），先分段再转录**。
+**上传长音频文件（> 30 秒），智能分段转录**。
 
-⚠️ **注意**: 此接口会将音频切成小段分别转录，可能导致句子断裂。如需自然流畅的结果，建议使用 `/upload` 接口。
+**特点**: 使用 VAD + 智能分段，在说话停顿处切割，保持句子完整性。支持参数化后处理。
 
 **Content-Type**: `multipart/form-data`
 
@@ -221,8 +242,8 @@ Typeless Service 是一个高性能的语音识别（ASR）服务，支持实时
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `file` | File | ✅ | - | 音频文件 (WAV, MP3, M4A, FLAC, OGG, AAC) |
-| `apply_postprocess` | bool | ❌ | `true` | 是否应用后处理 |
-| `language` | string | ❌ | `zh` | 语言代码: `zh` / `en` / `ja` / `ko` / `yue` / `auto` |
+| `postprocess_mode` | string | ❌ | `standard` | 后处理模式: `none` / `basic` / `standard` / `advanced` |
+| `language` | string | ❌ | `auto` | 语言代码: `zh` / `en` / `ja` / `ko` / `yue` / `auto` |
 
 **语言代码说明**:
 - `zh`: 中文（默认）
@@ -235,26 +256,52 @@ Typeless Service 是一个高性能的语音识别（ASR）服务，支持实时
 **响应示例**:
 ```json
 {
-  "transcript": "完整转录文本...",
-  "processed_transcript": "处理后的文本（带标点）...",
+  "transcript": "大年三十除夕我和女儿刘总在吉隆坡马来西亚过年我老婆回国了...",
+  "processed_transcript": "大年三十除夕，我和女儿刘总在吉隆坡、马来西亚过年。我老婆回国了，所以只有我们两个。...",
   "audio_metadata": {
-    "duration": 120.5,
+    "duration": 115.734,
     "sample_rate": 16000,
-    "num_segments": 5,
-    "strategy": "hybrid"
+    "channels": 1,
+    "bit_depth": 16
   },
   "processing_stats": {
-    "num_segments": 5,
-    "strategy": "hybrid",
-    "merge_strategy": "smart",
+    "num_segments": 7,
+    "strategy": "audio_pipeline",
     "postprocess_stats": {
-      "chars_added": 10
+      "fillers_removed": 0,
+      "duplicates_removed": 0,
+      "corrections_applied": 0,
+      "total_changes": 0,
+      "mode": "standard"
     }
   },
   "segments": [
-    {"segment_index": 0, "duration": 24.0},
-    {"segment_index": 1, "duration": 25.5}
+    {"segment_index": 0, "duration": 17.15},
+    {"segment_index": 1, "duration": 18.15},
+    {"segment_index": 2, "duration": 17.85},
+    {"segment_index": 3, "duration": 18.45},
+    {"segment_index": 4, "duration": 19.15},
+    {"segment_index": 5, "duration": 18.5},
+    {"segment_index": 6, "duration": 5.94}
   ]
+}
+```
+
+**AI 增强模式示例** (`postprocess_mode=advanced`):
+```json
+{
+  "transcript": "天是大年3十除夕我和女儿刘总在吉隆坡马来西亚过年...",
+  "processed_transcript": "大年三十除夕，我和女儿刘总在吉隆坡、马来西亚过年。...\n\n宝贝玩得很开心，还吃了很多零食和糖果...",
+  "processing_stats": {
+    "num_segments": 7,
+    "strategy": "audio_pipeline",
+    "postprocess_stats": {
+      "mode": "advanced",
+      "ai_enhanced": true,
+      "ai_provider": "openai",
+      "ai_model": "gpt-4o-mini"
+    }
+  }
 }
 ```
 
@@ -263,36 +310,45 @@ Typeless Service 是一个高性能的语音识别（ASR）服务，支持实时
 | 场景 | 推荐接口 | 原因 |
 |------|---------|------|
 | 短视频/语音消息 (≤30秒) | **`/upload`** ✅ | 整体转录，句子自然流畅 |
-| 长音频 (>30秒) | `/upload-long` | 分段处理，避免内存问题 |
-| 需要自然语句 | **`/upload`** ✅ | 不切分，保持语义完整 |
-| 实时性要求高 | **`/upload`** ✅ | 处理更快，无分段开销 |
+| 长音频 (>30秒) | **`/upload-long`** ✅ | 智能分段，保持句子完整性 |
+| 需要 AI 润色 | **`/upload-long` + advanced** ✅ | AI 增强，输出高质量文档 |
+| 实时性要求高 | **`/upload`** ✅ | 处理更快 |
 
-⚠️ **警告**: `/upload-long` 会把音频切成 **0.5秒~30秒** 的小段分别转录，结果可能是：
-- "你能听。那我再说。我。感觉你在。反正有。有问题。" ❌
+**智能分段说明**:
+- 使用 VAD（语音活动检测）识别说话停顿
+- 在能量低点（停顿处）切割，而非固定时长
+- 目标段长：8-20 秒，平衡上下文与准确率
+- 115 秒音频通常分成 6-8 个自然段落
 
-而 `/upload` 返回：
-- "你能听到我在说话吗？我感觉你这个翻译有点问题。" ✅
-| 智能合并 | 否 | ✅ 是 |
-| 处理时间 | 快 (~0.5s) | 较慢 (分段数 × 0.5s) |
-
-**使用示例**（仅用于 >30秒的长音频）：
+**使用示例**:
 ```python
 import requests
 
 url = "http://127.0.0.1:28111/api/postprocess/upload-long"
 
-with open("5_minutes_meeting.mp3", "rb") as f:
+# 标准模式（默认）
+with open("meeting.mp3", "rb") as f:
     files = {"file": f}
     data = {
-        "apply_postprocess": "true",
-        "language": "zh"
+        "postprocess_mode": "standard",
+        "language": "auto"
     }
-
     response = requests.post(url, files=files, data=data, timeout=120)
     result = response.json()
+    print(f"转录: {result['transcript']}")
+    print(f"处理后: {result['processed_transcript']}")
 
-print(f"转录: {result['transcript']}")
-# 注意：结果可能是不连贯的短句拼接
+# AI 增强模式（高质量输出）
+with open("interview.mp3", "rb") as f:
+    files = {"file": f}
+    data = {
+        "postprocess_mode": "advanced",  # 启用 AI 增强
+        "language": "auto"
+    }
+    response = requests.post(url, files=files, data=data, timeout=180)
+    result = response.json()
+    # AI 会润色文本、分段、优化可读性
+    print(f"AI 处理后: {result['processed_transcript']}")
 ```
 
 **💡 推荐：语音消息用 `/upload` 接口**
@@ -322,25 +378,52 @@ with open("voice_message.ogg", "rb") as f:
 ### 5. 后处理
 
 #### POST /api/postprocess/text
-对文本进行后处理（标点、格式化）。
+对文本进行后处理（支持 4 种处理模式）。
 
 **请求体**:
 ```json
 {
   "text": "需要处理的文本",
-  "operations": ["punctuation", "formatting", "filler_removal"]
+  "mode": "standard",
+  "use_llm": false
 }
 ```
+
+**参数说明**:
+- `text`: 需要处理的文本（必填）
+- `mode`: 处理模式（可选，默认 `standard`）
+  - `none`: 不做处理
+  - `basic`: 基础处理（去重复 + 标点）
+  - `standard`: 标准处理（填充词、修正、格式化）
+  - `advanced`: 高级处理（需设置 `use_llm: true`）
+- `use_llm`: 是否使用云端 LLM 增强（可选，默认 `false`）
 
 **响应示例**:
 ```json
 {
-  "processed_text": "处理后的文本。",
-  "operations_applied": ["punctuation", "formatting"],
+  "original": "需要处理的文本",
+  "processed": "处理后的文本。",
   "stats": {
-    "chars_added": 1,
-    "fillers_removed": 2
-  }
+    "fillers_removed": 2,
+    "duplicates_removed": 1,
+    "corrections_applied": 0,
+    "total_changes": 3,
+    "mode": "standard"
+  },
+  "provider_used": "rules"
+}
+```
+
+**AI 增强响应示例**:
+```json
+{
+  "original": "大年三十我和女儿在吉隆坡过年",
+  "processed": "大年三十，我和女儿在吉隆坡过年。我们一起吃年夜饭，玩得很开心。",
+  "stats": {
+    "mode": "advanced",
+    "ai_enhanced": true
+  },
+  "provider_used": "openai"
 }
 ```
 
@@ -408,7 +491,7 @@ BASE_URL = "http://127.0.0.1:28111"
 
 with open("recording.wav", "rb") as f:
     files = {"file": f}
-    data = {"language": "zh", "apply_postprocess": "true"}
+    data = {"language": "zh", "postprocess_mode": "standard"}
 
     response = requests.post(f"{BASE_URL}/api/postprocess/upload",
         files=files, data=data)
@@ -427,10 +510,17 @@ curl -X POST http://127.0.0.1:28111/api/asr/start \
   -H "Content-Type: application/json" \
   -d '{"app_info": "test"}'
 
-# 上传文件转录
+# 上传文件转录（标准模式）
 curl -X POST http://127.0.0.1:28111/api/postprocess/upload \
   -F "file=@recording.wav" \
-  -F "language=zh"
+  -F "language=zh" \
+  -F "postprocess_mode=standard"
+
+# 长音频 + AI 增强模式
+curl -X POST http://127.0.0.1:28111/api/postprocess/upload-long \
+  -F "file=@meeting.mp3" \
+  -F "language=auto" \
+  -F "postprocess_mode=advanced"
 ```
 
 ---
@@ -510,6 +600,23 @@ MODEL_TYPE = "sensevoice"  # 或 "whisper", "vibevoice"
 
 ---
 
+## 更新日志
+
+### v0.3.0 (2026-02-17)
+- ✨ **新增**: 参数化后处理模式 (`none` / `basic` / `standard` / `advanced`)
+- ✨ **新增**: AI 增强模式（基于 OpenAI/Gemini/Ollama）
+- ✨ **新增**: 智能音频分段（基于能量检测，在停顿处切割）
+- 🔧 **优化**: `/upload` 和 `/upload-long` 接口统一参数
+- 🔧 **优化**: 可复用的后处理函数
+
+### v0.2.0 (之前版本)
+- ✨ 集成 SenseVoice Small ASR 模型
+- ✨ 支持实时流式 ASR
+- ✨ 支持文件上传转录
+- ✨ 基础后处理功能
+
+---
+
 ## 许可证
 
 本项目遵循开源许可证。详见项目仓库。
@@ -519,4 +626,4 @@ MODEL_TYPE = "sensevoice"  # 或 "whisper", "vibevoice"
 ## 联系方式
 
 - **GitHub**: https://github.com/andrewrong/vibe_typeless
-- **版本**: v0.2.0-sensevoice
+- **版本**: v0.3.0

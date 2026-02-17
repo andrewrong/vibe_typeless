@@ -917,6 +917,88 @@ postprocess_router = APIRouter(prefix="/api/postprocess", tags=["Post-Processing
 processor = TextProcessor()
 
 
+async def apply_postprocessing(
+    text: str,
+    mode: str,
+    logger: logging.Logger
+) -> tuple[Optional[str], Optional[dict]]:
+    """
+    Apply parameterized post-processing to transcribed text
+
+    Args:
+        text: Raw transcribed text
+        mode: Post-processing mode - "none", "basic", "standard", "advanced"
+        logger: Logger instance for logging
+
+    Returns:
+        Tuple of (processed_text, stats_dict)
+        - For "none" mode: returns (None, None)
+        - For other modes: returns (processed_text, stats)
+    """
+    if not text or mode == "none":
+        return None, None
+
+    logger.info(f"📝 Applying post-processing (mode={mode})...")
+
+    processed_transcript = None
+    postprocess_stats = None
+
+    # Step 1: Apply rule-based processing (basic/standard/advanced all use this)
+    if mode in ["basic", "standard", "advanced"]:
+        result = processor.process(text, mode=mode)
+        processed_transcript = result.processed
+        postprocess_stats = result.stats
+        logger.info(f"   Rule-based processing complete: {postprocess_stats.get('total_changes', 0)} changes")
+
+    # Step 2: For advanced mode, also apply AI enhancement
+    if mode == "advanced" and processed_transcript:
+        try:
+            from src.postprocess.ai_processor import AIPostProcessor, PostProcessRequest
+            from src.config import settings
+
+            # Get AI provider from settings
+            ai_provider = settings.AI_PROVIDER
+            # Select model based on provider
+            if ai_provider == 'openai':
+                ai_model = settings.OPENAI_MODEL
+            elif ai_provider == 'gemini':
+                ai_model = settings.GEMINI_MODEL
+            elif ai_provider == 'ollama':
+                ai_model = settings.OLLAMA_MODEL
+            else:
+                ai_model = None
+
+            logger.info(f"🤖 Applying AI enhancement (provider={ai_provider})...")
+
+            ai_processor = AIPostProcessor(timeout=60)
+            ai_request = PostProcessRequest(
+                text=processed_transcript,
+                provider=ai_provider,
+                model=ai_model
+            )
+
+            ai_response = await ai_processor.process(ai_request)
+
+            if ai_response and ai_response.processed:
+                processed_transcript = ai_response.processed
+                postprocess_stats["ai_enhanced"] = True
+                postprocess_stats["ai_provider"] = ai_provider
+                postprocess_stats["ai_model"] = ai_response.model
+                logger.info(f"   AI enhancement complete ({len(ai_response.processed)} chars)")
+            else:
+                logger.warning("   AI enhancement returned empty, keeping rule-based result")
+                postprocess_stats["ai_enhanced"] = False
+
+        except Exception as e:
+            logger.error(f"   AI enhancement failed: {e}, using rule-based result")
+            postprocess_stats["ai_enhanced"] = False
+            postprocess_stats["ai_error"] = str(e)
+            # Keep rule-based result as fallback
+
+    logger.info(f"   Post-processing complete: {postprocess_stats.get('total_changes', 0)} changes")
+    return processed_transcript, postprocess_stats
+
+
 @postprocess_router.post("/text", response_model=PostProcessResponse)
 async def process_text(request: PostProcessRequest):
     """
@@ -1044,7 +1126,7 @@ async def get_status():
 @postprocess_router.post("/upload", response_model=AudioFileProcessResponse)
 async def upload_audio_file(
     file: UploadFile = File(...),
-    apply_postprocess: bool = True,
+    postprocess_mode: str = "standard",
     remove_silence: bool = False,
     normalize_volume: bool = False,
     detect_silence_only: bool = False,
@@ -1055,7 +1137,7 @@ async def upload_audio_file(
 
     Args:
         file: Audio file (WAV, MP3, M4A, etc.)
-        apply_postprocess: Whether to apply text post-processing
+        postprocess_mode: Post-processing mode - "none" (fastest), "basic", "standard" (default), "advanced" (AI enhanced)
         remove_silence: Whether to remove silence from audio
         normalize_volume: Whether to normalize volume
         detect_silence_only: Only detect silence, don't transcribe
@@ -1064,6 +1146,13 @@ async def upload_audio_file(
     Returns:
         Transcription with optional post-processing
     """
+    # Validate postprocess_mode
+    valid_modes = ["none", "basic", "standard", "advanced"]
+    if postprocess_mode not in valid_modes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid postprocess_mode: {postprocess_mode}. Valid modes: {', '.join(valid_modes)}"
+        )
     # Get file format from extension
     file_format = file.filename.split('.')[-1] if '.' in file.filename else None
 
@@ -1119,12 +1208,12 @@ async def upload_audio_file(
         model = _get_asr_model_instance()
         transcript = model.transcribe(audio_int16, language=language)
 
-        # Apply post-processing if requested
-        processed_transcript = None
-        if apply_postprocess and transcript:
-            result = processor.process(transcript)
-            processed_transcript = result.processed
-            processing_stats["postprocess_stats"] = result.stats
+        # Apply post-processing based on mode
+        processed_transcript, postprocess_stats = await apply_postprocessing(
+            transcript, postprocess_mode, logger
+        )
+        if postprocess_stats:
+            processing_stats["postprocess_stats"] = postprocess_stats
 
         return AudioFileProcessResponse(
             transcript=transcript,
@@ -1243,7 +1332,7 @@ class LongAudioProcessResponse(BaseModel):
 @postprocess_router.post("/upload-long", response_model=LongAudioProcessResponse)
 async def upload_long_audio(
     file: UploadFile = File(...),
-    apply_postprocess: bool = True,
+    postprocess_mode: str = "standard",
     language: str = "auto"
 ):
     """
@@ -1253,14 +1342,26 @@ async def upload_long_audio(
 
     Args:
         file: Audio file (WAV, MP3, M4A, etc.)
-        apply_postprocess: Whether to apply text post-processing
+        postprocess_mode: Post-processing mode - "none" (fastest, default), "basic", "standard", "advanced"
+            - none: No post-processing (fastest)
+            - basic: Minimal processing (duplicates + punctuation)
+            - standard: Full rule-based processing (fillers, corrections, formatting)
+            - advanced: Standard + AI enhancement (slowest, best quality)
         language: Language code - "zh" (Chinese), "en" (English), "ja" (Japanese), "ko" (Korean), "yue" (Cantonese), or "auto" (auto-detect)
 
     Returns:
         Full transcription with segment information
     """
+    # Validate postprocess_mode
+    valid_modes = ["none", "basic", "standard", "advanced"]
+    if postprocess_mode not in valid_modes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid postprocess_mode: {postprocess_mode}. Valid modes: {', '.join(valid_modes)}"
+        )
+
     # Log incoming request parameters
-    logger.info(f"📥 upload-long request: file={file.filename}, apply_postprocess={apply_postprocess}, language={language}")
+    logger.info(f"📥 upload-long request: file={file.filename}, postprocess_mode={postprocess_mode}, language={language}")
 
     # Get file format from extension
     file_format = file.filename.split('.')[-1] if '.' in file.filename else None
@@ -1318,13 +1419,10 @@ async def upload_long_audio(
         # Join transcripts
         full_transcript = " ".join(transcripts) if transcripts else ""
 
-        # Apply post-processing if requested
-        processed_transcript = None
-        postprocess_stats = None
-        if apply_postprocess and full_transcript:
-            result = processor.process(full_transcript)
-            processed_transcript = result.processed
-            postprocess_stats = result.stats
+        # Apply post-processing based on mode
+        processed_transcript, postprocess_stats = await apply_postprocessing(
+            full_transcript, postprocess_mode, logger
+        )
 
         return LongAudioProcessResponse(
             transcript=full_transcript,
