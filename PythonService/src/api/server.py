@@ -18,11 +18,12 @@ from slowapi.errors import RateLimitExceeded
 # Use relative imports
 from .routes import router, postprocess_router, job_router
 from .rate_limit import limiter
+from ..version import get_version_info, get_version_string, __version__
 
 app = FastAPI(
     title="Typeless Service",
     description="ASR and AI-powered text post-processing service",
-    version="0.2.0"
+    version=__version__
 )
 
 # Set up rate limiting
@@ -45,6 +46,17 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
+
+
+@app.get("/version")
+async def version():
+    """Version endpoint"""
+    return get_version_info()
+
+
+# Log version on startup
+logger = logging.getLogger(__name__)
+logger.info(f"🚀 Typeless Python Service v{get_version_string()}")
 
 
 if __name__ == "__main__":
