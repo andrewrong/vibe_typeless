@@ -144,10 +144,10 @@ class RecordingManager: ObservableObject {
     // MARK: - Public Methods
 
     func toggleRecording() {
-        Task {
-            if isRecording {
-                await stopRecording()
-            } else {
+        if isRecording {
+            stopRecording()
+        } else {
+            Task {
                 await startRecording()
             }
         }
@@ -210,7 +210,7 @@ class RecordingManager: ObservableObject {
         }
     }
 
-    private func stopRecording() async {
+    private func stopRecording() {
         status = "Stopping..."
         progress = 1.0
 
@@ -221,24 +221,31 @@ class RecordingManager: ObservableObject {
             return
         }
 
-        // Stop recording
+        // Stop recording - this triggers final chunk send
+        // The actual session stop happens in audioRecorderDidFinishSendingFinalChunk
         recorder.stopRecording()
-        isRecording = false
-        status = "Getting final transcript..."
+    }
 
-        // Stop ASR session and get final transcript
-        if let sessionId = sessionId {
-            do {
-                let result = try await asrService.stopSession(sessionId: sessionId)
-                transcript = result.finalTranscript
-                print("✅ Final transcript: \(result.finalTranscript)")
-            } catch {
-                print("❌ Failed to stop session: \(error)")
-                status = "Failed to get transcript"
-            }
-            self.sessionId = nil
+    /// Called when final audio chunk is sent - completes the stop process
+    private func completeStopRecording() async {
+        guard let sessionId = sessionId else {
+            status = "No session ID"
+            isRecording = false
+            return
         }
 
+        status = "Getting final transcript..."
+
+        do {
+            let result = try await asrService.stopSession(sessionId: sessionId)
+            transcript = result.finalTranscript
+            print("✅ Final transcript: \(result.finalTranscript)")
+        } catch {
+            print("❌ Failed to stop session: \(error)")
+            status = "Failed to get transcript"
+        }
+
+        self.sessionId = nil
         status = "Ready"
         progress = 0.0
     }
@@ -247,10 +254,10 @@ class RecordingManager: ObservableObject {
 // MARK: - Audio Recorder Delegate
 
 extension RecordingManager: AudioRecorderDelegate {
-    nonisolated func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data) {
-        print("📤 Audio chunk received: \(data.count) bytes")
+    func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool) {
+        print("📤 Audio chunk received: \(data.count) bytes (final=\(isFinal))")
 
-        Task { @MainActor in
+        Task {
             guard let sessionId = self.sessionId else {
                 print("❌ No session ID")
                 return
@@ -259,19 +266,33 @@ extension RecordingManager: AudioRecorderDelegate {
             do {
                 // Send audio to backend for processing
                 _ = try await self.asrService.sendAudio(sessionId: sessionId, audioData: data)
-                // Don't update transcript during recording - only show final result
-                print("📝 Audio chunk sent to backend")
+                print("📝 Audio chunk sent to backend (final=\(isFinal))")
+
+                // If this is the final chunk, notify completion
+                if isFinal {
+                    audioRecorderDidFinishSendingFinalChunk(recorder)
+                }
             } catch {
                 print("❌ Failed to send audio: \(error)")
+                // Even on error, if this is final chunk, we should notify
+                if isFinal {
+                    audioRecorderDidFinishSendingFinalChunk(recorder)
+                }
             }
         }
     }
 
-    nonisolated func audioRecorder(_ recorder: AudioRecorder, didEncounterError error: AudioRecorderError) {
+    func audioRecorder(_ recorder: AudioRecorder, didEncounterError error: AudioRecorderError) {
         print("❌ Audio recorder error: \(error)")
-        Task { @MainActor in
-            self.status = "Recorder error: \(error.localizedDescription)"
-            self.isRecording = false
+        self.status = "Recorder error: \(error.localizedDescription)"
+        self.isRecording = false
+    }
+
+    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AudioRecorder) {
+        print("✅ Final audio chunk confirmed sent")
+        // Continue with stop session now that final chunk is sent
+        Task {
+            await completeStopRecording()
         }
     }
 }

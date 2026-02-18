@@ -86,8 +86,18 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             return
         }
 
-        // Stop recording
+        // Stop recording - this will trigger final chunk send
+        // The actual stop and cleanup will happen in audioRecorderDidFinishSendingFinalChunk
         recorder.stopRecording()
+        // Don't set isRecording = false yet - wait for final chunk to be sent
+    }
+
+    /// Called when final audio chunk has been sent
+    private func finalizeStopRecording() async {
+        NSLog("⏹️ [Background] Finalizing stop recording...")
+
+        // Now stop the recorder completely
+        audioRecorder?.finishStopping()
         isRecording = false
 
         // Get final transcript
@@ -149,19 +159,19 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
 
     // MARK: - AudioRecorderDelegate
 
-    nonisolated func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data) {
-        Task { @MainActor in
-            // 检查是否还在录音（防止停止后的延迟回调）
-            guard isRecording else {
-                NSLog("⚠️ [Background] Recording stopped, skipping audio chunk")
-                return
-            }
+    func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool) {
+        // 检查是否还在录音（防止停止后的延迟回调）
+        guard isRecording else {
+            NSLog("⚠️ [Background] Recording stopped, skipping audio chunk")
+            return
+        }
 
-            guard let sessionId = sessionId else {
-                NSLog("⚠️ [Background] No session ID, skipping audio chunk")
-                return
-            }
+        guard let sessionId = sessionId else {
+            NSLog("⚠️ [Background] No session ID, skipping audio chunk")
+            return
+        }
 
+        Task {
             do {
                 let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
 
@@ -170,13 +180,30 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
                     NSLog("📝 [Background] Preview: \(transcript.prefix(50))...")
                     previewWindow?.updateText(transcript)
                 }
+
+                // If this is the final chunk, notify that we're done
+                if isFinal {
+                    NSLog("✅ [Background] Final audio chunk sent successfully")
+                    audioRecorderDidFinishSendingFinalChunk(recorder)
+                }
             } catch {
                 NSLog("❌ [Background] Failed to send audio: \(error.localizedDescription)")
+                // Even on error, if this is final chunk, we should proceed
+                if isFinal {
+                    audioRecorderDidFinishSendingFinalChunk(recorder)
+                }
             }
         }
     }
 
-    nonisolated func audioRecorder(_ recorder: AudioRecorder, didEncounterError error: AudioRecorderError) {
+    func audioRecorder(_ recorder: AudioRecorder, didEncounterError error: AudioRecorderError) {
         NSLog("❌ [Background] Audio recorder error: \(error.localizedDescription)")
+    }
+
+    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AudioRecorder) {
+        NSLog("✅ [Background] Final chunk confirmed sent, proceeding to stop session")
+        Task {
+            await finalizeStopRecording()
+        }
     }
 }

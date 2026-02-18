@@ -12,8 +12,10 @@ enum AudioRecorderError: Error {
 /// Audio recorder delegate
 @MainActor
 protocol AudioRecorderDelegate: AnyObject {
-    func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data)
+    func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool)
     func audioRecorder(_ recorder: AudioRecorder, didEncounterError error: AudioRecorderError)
+    /// Called when the final audio chunk has been sent
+    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AudioRecorder)
 }
 
 /// Audio recorder for capturing system audio
@@ -31,6 +33,9 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
     private(set) var isRecording = false
     private(set) var sampleRate: Double = 16000.0
     private(set) var channels: UInt32 = 1
+
+    /// Flag to track if we're sending the final chunk
+    private var isSendingFinalChunk = false
 
     // MARK: - Initialization
 
@@ -140,13 +145,25 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
             return
         }
 
-        // Read final audio chunk before stopping
-        NSLog("🎤 AudioRecorder: Reading final audio chunk...")
-        readAndSendAudioChunk()
-
-        // Stop timer
+        // Stop timer first to prevent new chunks
         recordingTimer?.invalidate()
         recordingTimer = nil
+
+        // Mark that we're about to send the final chunk
+        isSendingFinalChunk = true
+        NSLog("🎤 AudioRecorder: Reading final audio chunk...")
+
+        // Read and send final audio chunk
+        readAndSendAudioChunk(isFinal: true)
+
+        // Note: We don't stop the recorder or clean up here
+        // We'll do that after the final chunk is confirmed sent
+        // See audioRecorderDidFinishSendingFinalChunk
+    }
+
+    /// Called by delegate when final chunk has been sent
+    func finishStopping() {
+        NSLog("🎤 AudioRecorder: Finishing stop (final chunk sent)")
 
         // Stop recorder
         audioRecorder?.stop()
@@ -158,8 +175,9 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
             audioFileURL = nil
         }
 
-        NSLog("✅ AudioRecorder: Recording stopped")
+        isSendingFinalChunk = false
         isRecording = false
+        NSLog("✅ AudioRecorder: Recording stopped")
     }
 
     // MARK: - Private Methods
@@ -180,12 +198,21 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         }
     }
 
-    private func readAndSendAudioChunk() {
-        guard let fileURL = audioFileURL else { return }
+    private func readAndSendAudioChunk(isFinal: Bool = false) {
+        guard let fileURL = audioFileURL else {
+            // If no file but this is final chunk, notify completion
+            if isFinal {
+                delegate?.audioRecorderDidFinishSendingFinalChunk(self)
+            }
+            return
+        }
 
         // Read the current file size
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
               let fileSize = attributes[.size] as? Int64 else {
+            if isFinal {
+                delegate?.audioRecorderDidFinishSendingFinalChunk(self)
+            }
             return
         }
 
@@ -194,12 +221,19 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         let bytesToRead = Int(newPosition - lastSentPosition)
 
         guard bytesToRead > 0 else {
+            // No new data, but if this is final chunk, still notify
+            if isFinal {
+                delegate?.audioRecorderDidFinishSendingFinalChunk(self)
+            }
             return
         }
 
         // Read new audio data from file
         guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
             NSLog("❌ Failed to open file handle")
+            if isFinal {
+                delegate?.audioRecorderDidFinishSendingFinalChunk(self)
+            }
             return
         }
 
@@ -207,7 +241,7 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         let audioData = handle.readData(ofLength: bytesToRead)
         handle.closeFile()
 
-        NSLog("📥 Raw file data: \(audioData.count) bytes (position \(lastSentPosition)->\(newPosition))")
+        NSLog("📥 Raw file data: \(audioData.count) bytes (position \(lastSentPosition)->\(newPosition), final=\(isFinal))")
 
         // WAV file header parsing
         let wavHeaderSize: Int64 = 44
@@ -217,7 +251,7 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         // Let's check if we're still in the header region
         if lastSentPosition < wavHeaderSize {
             // We're in the header region, skip it
-            var bytesToSkip = Int(wavHeaderSize - lastSentPosition)
+            let bytesToSkip = Int(wavHeaderSize - lastSentPosition)
 
             if audioData.count > bytesToSkip {
                 // Part of this chunk is header, skip it
@@ -228,6 +262,9 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
                 // Entire chunk is header, skip it all
                 lastSentPosition = newPosition
                 NSLog("⏭️ Entire chunk was header (\(audioData.count) bytes), skipping")
+                if isFinal {
+                    delegate?.audioRecorderDidFinishSendingFinalChunk(self)
+                }
                 return
             }
         } else {
@@ -244,10 +281,13 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         }
 
         guard !pcmData.isEmpty else {
+            if isFinal {
+                delegate?.audioRecorderDidFinishSendingFinalChunk(self)
+            }
             return
         }
 
-        NSLog("📤 Audio chunk: \(pcmData.count) bytes (raw PCM, \(pcmData.count / 2) samples)")
+        NSLog("📤 Audio chunk: \(pcmData.count) bytes (raw PCM, \(pcmData.count / 2) samples, final=\(isFinal))")
 
         // Create a dummy buffer for the delegate callback
         let frameCapacity = pcmData.count / sampleSize
@@ -255,17 +295,23 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
                                         sampleRate: sampleRate,
                                         channels: channels,
                                         interleaved: false) else {
+            if isFinal {
+                delegate?.audioRecorderDidFinishSendingFinalChunk(self)
+            }
             return
         }
 
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCapacity)) else {
+            if isFinal {
+                delegate?.audioRecorderDidFinishSendingFinalChunk(self)
+            }
             return
         }
 
         buffer.frameLength = AVAudioFrameCount(frameCapacity)
 
-        // Send to delegate
-        delegate?.audioRecorder(self, didOutputAudioBuffer: buffer, data: pcmData)
+        // Send to delegate - for final chunk, the delegate is responsible for calling finishStopping
+        delegate?.audioRecorder(self, didOutputAudioBuffer: buffer, data: pcmData, isFinal: isFinal)
     }
 
     // MARK: - AVAudioRecorderDelegate
