@@ -18,6 +18,12 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
 
     private(set) var isRecording = false
 
+    /// Buffer for audio chunks received before session is ready
+    private var pendingAudioChunks: [Data] = []
+
+    /// Flag to track if pending chunks are being sent
+    private var isSendingPendingChunks = false
+
     private let logger = OSLog(subsystem: "com.typeless.app", category: "BackgroundRecording")
 
     // MARK: - Initialization
@@ -51,22 +57,71 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             _ = powerMode.detectAndUpdate()
             NSLog("📱 [Background] Power Mode: \(powerMode.getCategory())")
 
-            // Start ASR session
-            let appInfo = getAppInfo()
-            sessionId = try await asrService.startSession(appInfo: appInfo)
-            NSLog("✅ [Background] Session started")
+            // Clear any pending chunks from previous session
+            pendingAudioChunks.removeAll()
 
-            // Start audio recorder
+            // Start audio recorder FIRST (don't wait for network)
+            // This ensures audio is captured immediately when user presses the key
             guard let recorder = audioRecorder else {
                 throw NSError(domain: "BackgroundRecording", code: -1, userInfo: [NSLocalizedDescriptionKey: "No audio recorder available"])
             }
             try await recorder.startRecording()
+
+            // Mark as recording immediately so audio chunks are accepted
             isRecording = true
-            NSLog("✅ [Background] Recording started")
+            NSLog("✅ [Background] Recording started (audio capturing)")
+
+            // Then create ASR session in background (this may take time due to network)
+            Task {
+                do {
+                    let appInfo = getAppInfo()
+                    let newSessionId = try await asrService.startSession(appInfo: appInfo)
+                    self.sessionId = newSessionId
+                    NSLog("✅ [Background] Session started (ready to receive audio)")
+
+                    // Send any pending audio chunks that were received while waiting for session
+                    await sendPendingAudioChunks()
+                } catch {
+                    NSLog("❌ [Background] Failed to create session: \(error.localizedDescription)")
+                    // Don't stop recording, just log the error
+                    // The user can still cancel manually
+                }
+            }
         } catch {
             NSLog("❌ [Background] Failed to start: \(error.localizedDescription)")
             isRecording = false
+            pendingAudioChunks.removeAll()
         }
+    }
+
+    /// Send any pending audio chunks that were buffered before session was ready
+    private func sendPendingAudioChunks() async {
+        guard let sessionId = sessionId else { return }
+        guard !isSendingPendingChunks else { return }
+
+        isSendingPendingChunks = true
+        defer { isSendingPendingChunks = false }
+
+        let chunksToSend = pendingAudioChunks
+        pendingAudioChunks.removeAll()
+
+        guard !chunksToSend.isEmpty else { return }
+
+        NSLog("📤 [Background] Sending \(chunksToSend.count) pending audio chunks...")
+
+        for (index, data) in chunksToSend.enumerated() {
+            do {
+                let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
+                if !transcript.isEmpty {
+                    NSLog("📝 [Background] Preview from pending chunk \(index+1): \(transcript.prefix(50))...")
+                    previewWindow?.updateText(transcript)
+                }
+            } catch {
+                NSLog("❌ [Background] Failed to send pending chunk \(index+1): \(error.localizedDescription)")
+            }
+        }
+
+        NSLog("✅ [Background] Finished sending pending chunks")
     }
 
     /// Get current app information
@@ -106,6 +161,23 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             return
         }
 
+        // Wait for any pending chunks to finish sending
+        if isSendingPendingChunks {
+            NSLog("⏳ [Background] Waiting for pending chunks to finish sending...")
+            // Give it a short time to complete (max 2 seconds)
+            var attempts = 0
+            while isSendingPendingChunks && attempts < 20 {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                attempts += 1
+            }
+        }
+
+        // Also send any remaining pending chunks
+        if !pendingAudioChunks.isEmpty {
+            NSLog("📤 [Background] Sending remaining pending chunks before stop...")
+            await sendPendingAudioChunks()
+        }
+
         do {
             let result = try await asrService.stopSession(sessionId: sessionId)
             let transcript = result.finalTranscript
@@ -126,12 +198,17 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         // Hide preview window
         previewWindow?.hide()
 
+        // Clean up
         self.sessionId = nil
+        self.pendingAudioChunks.removeAll()
     }
 
     /// Cancel recording without saving transcript
     func cancelRecording() async {
         NSLog("❌ [Background] Cancelling recording...")
+
+        // Clear pending chunks
+        pendingAudioChunks.removeAll()
 
         guard let recorder = audioRecorder else {
             NSLog("❌ [Background] No recorder to cancel")
@@ -166,32 +243,39 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             return
         }
 
+        // If no session yet, buffer the audio chunk for later
         guard let sessionId = sessionId else {
-            NSLog("⚠️ [Background] No session ID, skipping audio chunk")
+            NSLog("⏳ [Background] No session ID yet, buffering audio chunk (\(data.count) bytes)")
+            pendingAudioChunks.append(data)
             return
         }
 
         Task {
-            do {
-                let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
+            await sendAudioChunk(sessionId: sessionId, data: data, isFinal: isFinal, recorder: recorder)
+        }
+    }
 
-                // Update preview window with partial transcript
-                if !transcript.isEmpty {
-                    NSLog("📝 [Background] Preview: \(transcript.prefix(50))...")
-                    previewWindow?.updateText(transcript)
-                }
+    /// Send a single audio chunk
+    private func sendAudioChunk(sessionId: String, data: Data, isFinal: Bool, recorder: AudioRecorder) async {
+        do {
+            let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
 
-                // If this is the final chunk, notify that we're done
-                if isFinal {
-                    NSLog("✅ [Background] Final audio chunk sent successfully")
-                    audioRecorderDidFinishSendingFinalChunk(recorder)
-                }
-            } catch {
-                NSLog("❌ [Background] Failed to send audio: \(error.localizedDescription)")
-                // Even on error, if this is final chunk, we should proceed
-                if isFinal {
-                    audioRecorderDidFinishSendingFinalChunk(recorder)
-                }
+            // Update preview window with partial transcript
+            if !transcript.isEmpty {
+                NSLog("📝 [Background] Preview: \(transcript.prefix(50))...")
+                previewWindow?.updateText(transcript)
+            }
+
+            // If this is the final chunk, notify that we're done
+            if isFinal {
+                NSLog("✅ [Background] Final audio chunk sent successfully")
+                audioRecorderDidFinishSendingFinalChunk(recorder)
+            }
+        } catch {
+            NSLog("❌ [Background] Failed to send audio: \(error.localizedDescription)")
+            // Even on error, if this is final chunk, we should proceed
+            if isFinal {
+                audioRecorderDidFinishSendingFinalChunk(recorder)
             }
         }
     }

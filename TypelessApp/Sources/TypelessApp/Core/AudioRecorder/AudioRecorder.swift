@@ -135,6 +135,14 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
 
         // Start timer to read and send audio chunks
         startAudioChunkTimer()
+
+        // Immediately trigger first chunk read after a short delay (50ms)
+        // This ensures the first chunk is sent quickly, capturing audio right after key press
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self = self, self.isRecording else { return }
+            NSLog("🎤 AudioRecorder: Sending initial chunk...")
+            self.readAndSendAudioChunk(isFinal: false)
+        }
     }
 
     /// Stop recording audio
