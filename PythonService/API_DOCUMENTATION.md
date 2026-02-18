@@ -625,5 +625,5 @@ MODEL_TYPE = "sensevoice"  # 或 "whisper", "vibevoice"
 
 ## 联系方式
 
-- **GitHub**: https://github.com/username/typeless
+- **GitHub**: https://github.com/andrewrong/vibe_typeless
 - **版本**: v0.3.0
