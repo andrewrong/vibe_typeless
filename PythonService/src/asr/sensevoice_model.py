@@ -8,66 +8,10 @@ Language: Chinese, English, Japanese, Korean, Cantonese
 
 import logging
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional
 import numpy as np
-import re
 
 logger = logging.getLogger(__name__)
-
-# Financial terms correction dictionary
-# Maps common misrecognitions to correct financial terms
-FINANCIAL_TERMS_CORRECTIONS: Dict[str, str] = {
-    # Common Chinese misrecognitions of English financial terms
-    "塞尔普特": "sell put",
-    "塞尔帕特": "sell put",
-    "卖put": "sell put",
-    "卖普特": "sell put",
-    "塞欧普特": "sell put",
-
-    "塞尔扣": "sell call",
-    "塞尔考": "sell call",
-    "卖call": "sell call",
-    "塞考": "sell call",
-
-    "拜普特": "buy put",
-    "买put": "buy put",
-
-    "拜扣": "buy call",
-    "买call": "buy call",
-
-    "卡沃考": "covered call",
-    "卡沃德扣": "covered call",
-
-    "内克普特": "naked put",
-
-    "斯拽克普莱斯": "strike price",
-    "斯拽克": "strike",
-
-    "普瑞米姆": "premium",
-    "普瑞谬": "premium",
-
-    "艾克思皮瑞神": "expiration",
-    "艾克思皮": "expiration",
-
-    "迪尔塔": "delta",
-    "伽马": "gamma",
-    "西塔": "theta",
-    "维伽": "vega",
-
-    "浪": "long",
-    "肖特": "short",
-    "牛市": "bullish",
-    "熊市": "bearish",
-
-    "迪威登": "dividend",
-    "伊尔德": "yield",
-    "玛金": "margin",
-    "莱沃瑞吉": "leverage",
-
-    "因泽莫尼": "in the money",
-    "艾特泽莫尼": "at the money",
-    "奥特泽莫尼": "out of the money",
-}
 
 
 class SenseVoiceASR:
@@ -145,42 +89,9 @@ class SenseVoiceASR:
 
         self.model_path = model_path
         self.use_int8 = use_int8
-        self.enable_term_correction = True  # Enable by default
         logger.info(f"   Language: {language if language else 'auto'}")
-        logger.info(f"   Financial terms correction: enabled")
 
         logger.info("✅ SenseVoice model loaded successfully")
-
-    def correct_financial_terms(self, text: str) -> str:
-        """
-        Correct common misrecognitions of English financial terms.
-
-        This function handles cases where SenseVoice recognizes English financial
-        terms as Chinese phonetic approximations.
-
-        Args:
-            text: Raw transcription text
-
-        Returns:
-            Text with corrected financial terms
-        """
-        if not text or not self.enable_term_correction:
-            return text
-
-        corrected = text
-
-        # Apply corrections
-        for wrong, correct in FINANCIAL_TERMS_CORRECTIONS.items():
-            # Use word boundaries for Chinese characters
-            # Match the wrong term as a whole word/phrase
-            pattern = re.compile(re.escape(wrong), re.IGNORECASE)
-            corrected = pattern.sub(correct, corrected)
-
-        # Log corrections if any were made
-        if corrected != text:
-            logger.info(f"📝 Terms corrected: '{text}' -> '{corrected}'")
-
-        return corrected
 
     def _find_model_path(self) -> Path:
         """Find model directory in runtime/models"""
@@ -266,10 +177,6 @@ class SenseVoiceASR:
         self.recognizer.decode_stream(stream)
 
         result = stream.result.text.strip()
-
-        # Apply financial terms correction (without AI)
-        if result and self.enable_term_correction:
-            result = self.correct_financial_terms(result)
 
         if result:
             logger.debug(f"📝 SenseVoice result: '{result[:50]}...'")
