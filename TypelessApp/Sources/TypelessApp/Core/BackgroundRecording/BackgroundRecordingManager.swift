@@ -9,7 +9,7 @@ import os.log
 class BackgroundRecordingManager: AudioRecorderDelegate {
     // MARK: - Properties
 
-    private var audioRecorder: AudioRecorder?
+    private var audioRecorder: RealtimeAudioRecorder?
     private var asrService: ASRService
     private var textInjector: TextInjector
     private var powerMode: PowerModeManager
@@ -33,8 +33,13 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         self.textInjector = TextInjector()
         self.powerMode = PowerModeManager()
         self.previewWindow = PreviewWindow()
-        self.audioRecorder = AudioRecorder()
+        self.audioRecorder = RealtimeAudioRecorder()
         self.audioRecorder?.delegate = self
+
+        // Pre-initialize recorder to reduce startup latency
+        Task {
+            await self.audioRecorder?.prepareRecorder()
+        }
     }
 
     // MARK: - Recording Control
@@ -80,7 +85,16 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
                     NSLog("✅ [Background] Session started (ready to receive audio)")
 
                     // Send any pending audio chunks that were received while waiting for session
+                    // This is critical even if user has stopped recording - ensures audio is not lost
                     await sendPendingAudioChunks()
+
+                    // If user has already stopped recording (isRecording is false), trigger finalize now
+                    // This ensures pending chunks are processed before stopSession
+                    if !self.isRecording && !self.pendingAudioChunks.isEmpty {
+                        NSLog("⏳ [Background] User stopped during session creation, finalizing...")
+                        // Don't call finalizeStopRecording here as it needs to be called from delegate
+                        // The pending chunks are already sent above
+                    }
                 } catch {
                     NSLog("❌ [Background] Failed to create session: \(error.localizedDescription)")
                     // Don't stop recording, just log the error
@@ -155,13 +169,7 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         audioRecorder?.finishStopping()
         isRecording = false
 
-        // Get final transcript
-        guard let sessionId = sessionId else {
-            NSLog("❌ [Background] No session ID")
-            return
-        }
-
-        // Wait for any pending chunks to finish sending
+        // Wait for any pending chunks to finish sending (from earlier sendPendingAudioChunks call)
         if isSendingPendingChunks {
             NSLog("⏳ [Background] Waiting for pending chunks to finish sending...")
             // Give it a short time to complete (max 2 seconds)
@@ -172,27 +180,30 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             }
         }
 
-        // Also send any remaining pending chunks
-        if !pendingAudioChunks.isEmpty {
-            NSLog("📤 [Background] Sending remaining pending chunks before stop...")
-            await sendPendingAudioChunks()
-        }
-
-        do {
-            let result = try await asrService.stopSession(sessionId: sessionId)
-            let transcript = result.finalTranscript
-
-            NSLog("📝 [Background] Transcript: \(transcript)")
-
-            // Inject text if not empty
-            if !transcript.isEmpty {
-                try await textInjector.inject(text: transcript)
-                NSLog("✅ [Background] Text injected successfully")
-            } else {
-                NSLog("⚠️ [Background] Empty transcript, skipping injection")
+        // If we have a session, send remaining pending chunks and stop
+        if let sessionId = sessionId {
+            // Send any remaining pending chunks
+            if !pendingAudioChunks.isEmpty {
+                NSLog("📤 [Background] Sending remaining pending chunks before stop...")
+                await sendPendingAudioChunks()
             }
-        } catch {
-            NSLog("❌ [Background] Failed to stop session: \(error)")
+
+            do {
+                let result = try await asrService.stopSession(sessionId: sessionId)
+                let transcript = result.finalTranscript
+
+                NSLog("📝 [Background] Transcript: \(transcript)")
+
+                // Inject text if not empty
+                if !transcript.isEmpty {
+                    try await textInjector.inject(text: transcript)
+                    NSLog("✅ [Background] Text injected successfully")
+                } else {
+                    NSLog("⚠️ [Background] Empty transcript, skipping injection")
+                }
+            } catch {
+                NSLog("❌ [Background] Failed to stop session: \(error)")
+            }
         }
 
         // Hide preview window
@@ -236,7 +247,7 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
 
     // MARK: - AudioRecorderDelegate
 
-    func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool) {
+    func audioRecorder(_ recorder: AnyObject, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool) {
         // 检查是否还在录音（防止停止后的延迟回调）
         guard isRecording else {
             NSLog("⚠️ [Background] Recording stopped, skipping audio chunk")
@@ -256,7 +267,7 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
     }
 
     /// Send a single audio chunk
-    private func sendAudioChunk(sessionId: String, data: Data, isFinal: Bool, recorder: AudioRecorder) async {
+    private func sendAudioChunk(sessionId: String, data: Data, isFinal: Bool, recorder: AnyObject) async {
         do {
             let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
 
@@ -280,11 +291,11 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         }
     }
 
-    func audioRecorder(_ recorder: AudioRecorder, didEncounterError error: AudioRecorderError) {
+    func audioRecorder(_ recorder: AnyObject, didEncounterError error: AudioRecorderError) {
         NSLog("❌ [Background] Audio recorder error: \(error.localizedDescription)")
     }
 
-    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AudioRecorder) {
+    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AnyObject) {
         NSLog("✅ [Background] Final chunk confirmed sent, proceeding to stop session")
         Task {
             await finalizeStopRecording()

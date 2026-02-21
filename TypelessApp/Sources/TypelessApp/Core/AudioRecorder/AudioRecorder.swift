@@ -2,21 +2,7 @@ import AVFoundation
 import Foundation
 import Cocoa
 
-/// Audio recording errors
-enum AudioRecorderError: Error {
-    case notAuthorized
-    case configurationFailed
-    case recordingFailed(Error)
-}
-
-/// Audio recorder delegate
-@MainActor
-protocol AudioRecorderDelegate: AnyObject {
-    func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool)
-    func audioRecorder(_ recorder: AudioRecorder, didEncounterError error: AudioRecorderError)
-    /// Called when the final audio chunk has been sent
-    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AudioRecorder)
-}
+// Note: AudioRecorderError and AudioRecorderDelegate are defined in AudioRecorderTypes.swift
 
 /// Audio recorder for capturing system audio
 @MainActor
@@ -80,29 +66,26 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
 
     // MARK: - Recording Control
 
-    /// Start recording audio
-    func startRecording() async throws {
-        NSLog("🎤 AudioRecorder: startRecording called")
-        guard !isRecording else {
-            NSLog("⚠️ AudioRecorder: Already recording")
+    /// Pre-initialize recorder to reduce startup latency
+    func prepareRecorder() async {
+        // Check permission first (only if not already granted)
+        if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
+            let hasPermission = await requestPermission()
+            guard hasPermission else { return }
+        }
+
+        // Only create recorder if not already exists
+        guard audioRecorder == nil else {
+            NSLog("🎤 AudioRecorder: Already initialized")
             return
         }
 
-        // Check permission
-        NSLog("🎤 AudioRecorder: Checking permissions...")
-        let hasPermission = await requestPermission()
-        guard hasPermission else {
-            NSLog("❌ AudioRecorder: Permission denied")
-            throw AudioRecorderError.notAuthorized
-        }
-
-        // Create temporary file for recording
+        // Create temp file
         let tempDir = NSTemporaryDirectory()
         let tempFile = tempDir + "recording_\(UUID().uuidString).wav"
         let fileURL = URL(fileURLWithPath: tempFile)
         self.audioFileURL = fileURL
 
-        // Configure recording settings
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
             AVSampleRateKey: sampleRate,
@@ -113,15 +96,68 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
             AVLinearPCMIsNonInterleaved: false
         ]
 
-        NSLog("🎤 AudioRecorder: Creating AVAudioRecorder...")
         guard let recorder = try? AVAudioRecorder(url: fileURL, settings: settings) else {
-            NSLog("❌ AudioRecorder: Failed to create recorder")
-            throw AudioRecorderError.configurationFailed
+            return
         }
 
         self.audioRecorder = recorder
         recorder.delegate = self
         recorder.isMeteringEnabled = true
+        NSLog("🎤 AudioRecorder: Pre-initialized and ready")
+    }
+
+    /// Start recording audio (optimized for minimal latency)
+    func startRecording() async throws {
+        NSLog("🎤 AudioRecorder: startRecording called")
+        guard !isRecording else {
+            NSLog("⚠️ AudioRecorder: Already recording")
+            return
+        }
+
+        // Skip permission check - should already be done in prepareRecorder
+        // This saves ~50-100ms of startup time
+
+        // Use pre-initialized recorder if available
+        if audioRecorder == nil {
+            NSLog("⚠️ AudioRecorder: Not pre-initialized, creating now...")
+
+            // Quick permission check using AVCaptureDevice (for macOS)
+            let authStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+            guard authStatus == .authorized else {
+                NSLog("❌ AudioRecorder: Permission not granted")
+                throw AudioRecorderError.notAuthorized
+            }
+
+            let tempDir = NSTemporaryDirectory()
+            let tempFile = tempDir + "recording_\(UUID().uuidString).wav"
+            let fileURL = URL(fileURLWithPath: tempFile)
+            self.audioFileURL = fileURL
+
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsNonInterleaved: false
+            ]
+
+            guard let recorder = try? AVAudioRecorder(url: fileURL, settings: settings) else {
+                NSLog("❌ AudioRecorder: Failed to create recorder")
+                throw AudioRecorderError.configurationFailed
+            }
+
+            self.audioRecorder = recorder
+            recorder.delegate = self
+            recorder.isMeteringEnabled = true
+        } else {
+            NSLog("✅ AudioRecorder: Using pre-initialized recorder")
+        }
+
+        guard let recorder = audioRecorder else {
+            throw AudioRecorderError.configurationFailed
+        }
 
         NSLog("🎤 AudioRecorder: Starting recording...")
         if !recorder.record() {
@@ -136,9 +172,9 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         // Start timer to read and send audio chunks
         startAudioChunkTimer()
 
-        // Immediately trigger first chunk read after a short delay (50ms)
-        // This ensures the first chunk is sent quickly, capturing audio right after key press
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+        // Immediately trigger first chunk read after a very short delay (10ms)
+        // This ensures the first chunk is sent as quickly as possible
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak self] in
             guard let self = self, self.isRecording else { return }
             NSLog("🎤 AudioRecorder: Sending initial chunk...")
             self.readAndSendAudioChunk(isFinal: false)
@@ -157,6 +193,10 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         recordingTimer?.invalidate()
         recordingTimer = nil
 
+        // Wait a short time to ensure final audio is written to file
+        // This helps capture the last bit of audio before stopping
+        Thread.sleep(forTimeInterval: 0.05) // 50ms delay
+
         // Mark that we're about to send the final chunk
         isSendingFinalChunk = true
         NSLog("🎤 AudioRecorder: Reading final audio chunk...")
@@ -173,19 +213,43 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
     func finishStopping() {
         NSLog("🎤 AudioRecorder: Finishing stop (final chunk sent)")
 
-        // Stop recorder
+        // Stop recorder but keep it for reuse (minimize startup latency)
         audioRecorder?.stop()
-        audioRecorder = nil
+        // Note: We don't nil audioRecorder here to enable reuse
 
         // Clean up temp file
         if let fileURL = audioFileURL {
             try? FileManager.default.removeItem(at: fileURL)
-            audioFileURL = nil
+            // Create new file URL for next recording
+            let tempDir = NSTemporaryDirectory()
+            let tempFile = tempDir + "recording_\(UUID().uuidString).wav"
+            self.audioFileURL = URL(fileURLWithPath: tempFile)
         }
 
         isSendingFinalChunk = false
         isRecording = false
+        lastSentPosition = 0
         NSLog("✅ AudioRecorder: Recording stopped")
+
+        // Re-configure recorder with new file URL for next recording
+        if let fileURL = audioFileURL {
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsNonInterleaved: false
+            ]
+
+            if let recorder = try? AVAudioRecorder(url: fileURL, settings: settings) {
+                self.audioRecorder = recorder
+                recorder.delegate = self
+                recorder.isMeteringEnabled = true
+                NSLog("🎤 AudioRecorder: Re-prepared for next recording")
+            }
+        }
     }
 
     // MARK: - Private Methods
@@ -197,7 +261,7 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
                 guard let self = self,
                       let recorder = self.audioRecorder,
                       recorder.isRecording,
-                      let fileURL = self.audioFileURL else {
+                      self.audioFileURL != nil else {
                     return
                 }
 
@@ -326,5 +390,10 @@ class AudioRecorder: NSObject, AVAudioRecorderDelegate {
 
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         NSLog("🎤 AudioRecorder: Did finish recording, success: \(flag)")
+    }
+
+    // Helper to notify delegate with correct type
+    private func notifyDelegateDidFinishSendingFinalChunk() {
+        delegate?.audioRecorderDidFinishSendingFinalChunk(self)
     }
 }

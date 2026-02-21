@@ -254,7 +254,7 @@ class RecordingManager: ObservableObject {
 // MARK: - Audio Recorder Delegate
 
 extension RecordingManager: AudioRecorderDelegate {
-    func audioRecorder(_ recorder: AudioRecorder, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool) {
+    func audioRecorder(_ recorder: AnyObject, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool) {
         print("📤 Audio chunk received: \(data.count) bytes (final=\(isFinal))")
 
         Task {
@@ -282,13 +282,13 @@ extension RecordingManager: AudioRecorderDelegate {
         }
     }
 
-    func audioRecorder(_ recorder: AudioRecorder, didEncounterError error: AudioRecorderError) {
+    func audioRecorder(_ recorder: AnyObject, didEncounterError error: AudioRecorderError) {
         print("❌ Audio recorder error: \(error)")
         self.status = "Recorder error: \(error.localizedDescription)"
         self.isRecording = false
     }
 
-    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AudioRecorder) {
+    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AnyObject) {
         print("✅ Final audio chunk confirmed sent")
         // Continue with stop session now that final chunk is sent
         Task {
