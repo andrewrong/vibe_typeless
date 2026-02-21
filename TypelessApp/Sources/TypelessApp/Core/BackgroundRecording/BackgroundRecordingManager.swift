@@ -6,7 +6,7 @@ import os.log
 /// Background recording manager
 /// Handles recording without UI, triggered by global hotkey
 @MainActor
-class BackgroundRecordingManager: AudioRecorderDelegate {
+class BackgroundRecordingManager {
     // MARK: - Properties
 
     private var audioRecorder: RealtimeAudioRecorder?
@@ -34,12 +34,47 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         self.powerMode = PowerModeManager()
         self.previewWindow = PreviewWindow()
         self.audioRecorder = RealtimeAudioRecorder()
-        self.audioRecorder?.delegate = self
+
+        // Setup callback closures
+        setupRecorderCallbacks()
 
         // Pre-initialize recorder to reduce startup latency
         Task {
             await self.audioRecorder?.prepareRecorder()
         }
+    }
+
+    private func setupRecorderCallbacks() {
+        audioRecorder?.onAudioChunk = { [weak self] data, isFinal in
+            Task { @MainActor in
+                guard let self = self else { return }
+                await self.handleAudioChunk(data: data, isFinal: isFinal)
+            }
+        }
+
+        audioRecorder?.onFinished = { [weak self] in
+            Task { @MainActor in
+                guard let self = self else { return }
+                await self.finalizeStopRecording()
+            }
+        }
+    }
+
+    private func handleAudioChunk(data: Data, isFinal: Bool) async {
+        // Check if still recording
+        guard isRecording else {
+            NSLog("⚠️ [Background] Recording stopped, skipping audio chunk")
+            return
+        }
+
+        // If no session yet, buffer the audio chunk for later
+        guard let sessionId = sessionId else {
+            NSLog("⏳ [Background] No session ID yet, buffering audio chunk (\(data.count) bytes)")
+            pendingAudioChunks.append(data)
+            return
+        }
+
+        await sendAudioChunk(sessionId: sessionId, data: data, isFinal: isFinal)
     }
 
     // MARK: - Recording Control
@@ -70,7 +105,7 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             guard let recorder = audioRecorder else {
                 throw NSError(domain: "BackgroundRecording", code: -1, userInfo: [NSLocalizedDescriptionKey: "No audio recorder available"])
             }
-            try await recorder.startRecording()
+            try recorder.startRecording()
 
             // Mark as recording immediately so audio chunks are accepted
             isRecording = true
@@ -92,7 +127,6 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
                     // This ensures pending chunks are processed before stopSession
                     if !self.isRecording && !self.pendingAudioChunks.isEmpty {
                         NSLog("⏳ [Background] User stopped during session creation, finalizing...")
-                        // Don't call finalizeStopRecording here as it needs to be called from delegate
                         // The pending chunks are already sent above
                     }
                 } catch {
@@ -245,29 +279,8 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
         NSLog("✅ [Background] Recording cancelled, transcript discarded")
     }
 
-    // MARK: - AudioRecorderDelegate
-
-    func audioRecorder(_ recorder: AnyObject, didOutputAudioBuffer buffer: AVAudioBuffer, data: Data, isFinal: Bool) {
-        // 检查是否还在录音（防止停止后的延迟回调）
-        guard isRecording else {
-            NSLog("⚠️ [Background] Recording stopped, skipping audio chunk")
-            return
-        }
-
-        // If no session yet, buffer the audio chunk for later
-        guard let sessionId = sessionId else {
-            NSLog("⏳ [Background] No session ID yet, buffering audio chunk (\(data.count) bytes)")
-            pendingAudioChunks.append(data)
-            return
-        }
-
-        Task {
-            await sendAudioChunk(sessionId: sessionId, data: data, isFinal: isFinal, recorder: recorder)
-        }
-    }
-
     /// Send a single audio chunk
-    private func sendAudioChunk(sessionId: String, data: Data, isFinal: Bool, recorder: AnyObject) async {
+    private func sendAudioChunk(sessionId: String, data: Data, isFinal: Bool) async {
         do {
             let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
 
@@ -280,25 +293,9 @@ class BackgroundRecordingManager: AudioRecorderDelegate {
             // If this is the final chunk, notify that we're done
             if isFinal {
                 NSLog("✅ [Background] Final audio chunk sent successfully")
-                audioRecorderDidFinishSendingFinalChunk(recorder)
             }
         } catch {
             NSLog("❌ [Background] Failed to send audio: \(error.localizedDescription)")
-            // Even on error, if this is final chunk, we should proceed
-            if isFinal {
-                audioRecorderDidFinishSendingFinalChunk(recorder)
-            }
-        }
-    }
-
-    func audioRecorder(_ recorder: AnyObject, didEncounterError error: AudioRecorderError) {
-        NSLog("❌ [Background] Audio recorder error: \(error.localizedDescription)")
-    }
-
-    func audioRecorderDidFinishSendingFinalChunk(_ recorder: AnyObject) {
-        NSLog("✅ [Background] Final chunk confirmed sent, proceeding to stop session")
-        Task {
-            await finalizeStopRecording()
         }
     }
 }
