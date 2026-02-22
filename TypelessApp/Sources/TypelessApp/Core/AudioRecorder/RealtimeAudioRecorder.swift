@@ -73,7 +73,8 @@ class RealtimeAudioRecorder: NSObject {
         #endif
     }
 
-    /// Pre-initialize and start audio engine (runs continuously in background)
+    /// Pre-initialize audio engine (but don't start it yet)
+    /// We'll start it on first recording to avoid resource conflicts
     func prepareRecorder() async {
         // Check permission first
         if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
@@ -83,23 +84,11 @@ class RealtimeAudioRecorder: NSObject {
 
         // Only create engine if not already exists
         guard audioEngine == nil else {
-            // Engine already exists, just ensure it's running
-            if audioEngine?.isRunning == false {
-                try? audioEngine?.start()
-            }
             return
         }
 
         setupAudioEngine()
-
-        // Start engine immediately and keep it running
-        // This ensures zero latency when user presses the hotkey
-        do {
-            try audioEngine?.start()
-            NSLog("✅ RealtimeAudioRecorder: Audio engine started and running (ready for instant recording)")
-        } catch {
-            NSLog("❌ RealtimeAudioRecorder: Failed to start engine: \(error)")
-        }
+        NSLog("✅ RealtimeAudioRecorder: Audio engine configured and ready")
     }
 
     private func setupAudioEngine() {
@@ -187,15 +176,18 @@ class RealtimeAudioRecorder: NSObject {
             throw AudioRecorderError.configurationFailed
         }
 
-        // Start engine if not running (should already be running from prepareRecorder)
+        // Start engine if not running
         if !engine.isRunning {
             NSLog("🎤 RealtimeAudioRecorder: Starting audio engine...")
             do {
                 try engine.start()
+                NSLog("✅ RealtimeAudioRecorder: Audio engine started")
             } catch {
                 NSLog("❌ RealtimeAudioRecorder: Failed to start engine: \(error)")
                 throw AudioRecorderError.recordingFailed(error)
             }
+        } else {
+            NSLog("🎤 RealtimeAudioRecorder: Audio engine already running")
         }
 
         // Clear buffer and reset state (thread-safe)
@@ -323,6 +315,11 @@ class RealtimeAudioRecorder: NSObject {
             let finalChunk = isFinal
             DispatchQueue.main.async { [weak self] in
                 self?.onAudioChunk?(chunkData, finalChunk)
+
+                // If this was the final chunk, trigger onFinished after sending
+                if finalChunk {
+                    self?.onFinished?()
+                }
             }
         }
     }

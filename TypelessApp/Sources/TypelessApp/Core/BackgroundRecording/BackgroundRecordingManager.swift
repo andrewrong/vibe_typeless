@@ -214,6 +214,22 @@ class BackgroundRecordingManager {
             }
         }
 
+        // Wait for session to be created if it hasn't been yet
+        // This handles the case where user stops recording before session creation completes
+        if sessionId == nil {
+            NSLog("⏳ [Background] Waiting for session to be created...")
+            var attempts = 0
+            while sessionId == nil && attempts < 50 { // Max 5 seconds wait
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                attempts += 1
+            }
+            if sessionId == nil {
+                NSLog("❌ [Background] Session was not created in time, discarding recording")
+            } else {
+                NSLog("✅ [Background] Session created after wait, proceeding with stop...")
+            }
+        }
+
         // If we have a session, send remaining pending chunks and stop
         if let sessionId = sessionId {
             // Send any remaining pending chunks
