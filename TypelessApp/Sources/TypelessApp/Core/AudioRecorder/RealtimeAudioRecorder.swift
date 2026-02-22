@@ -32,6 +32,13 @@ class RealtimeAudioRecorder: NSObject {
     /// Chunk interval in seconds
     private let chunkInterval: TimeInterval = 0.1 // 100ms chunks for low latency
 
+    /// Warmup time in seconds - audio captured during this period is kept but not sent immediately
+    /// This prevents losing the first ~100ms of audio
+    private let warmupInterval: TimeInterval = 0.1 // 100ms warmup
+
+    /// Timestamp when recording started (for warmup calculation)
+    private var recordingStartTime: Date?
+
     // MARK: - Initialization
 
     override init() {
@@ -199,16 +206,15 @@ class RealtimeAudioRecorder: NSObject {
         // Start recording - just set the flag!
         // Audio is already being captured by the running engine
         isRecording = true
-        NSLog("✅ RealtimeAudioRecorder: Recording started (TRUE zero latency)")
+        recordingStartTime = Date()
+        NSLog("✅ RealtimeAudioRecorder: Recording started (TRUE zero latency, with \(Int(warmupInterval * 1000))ms warmup)")
 
-        // Start timer to send chunks periodically
-        startChunkTimer()
-
-        // Send initial chunk immediately after a very short delay
-        let recorder = self
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak recorder] in
-            guard let recorder = recorder, recorder.isRecording else { return }
-            recorder.sendChunk(isFinal: false)
+        // Start timer to send chunks periodically (after warmup period)
+        // Warmup ensures we don't lose the first ~100ms of audio
+        DispatchQueue.main.asyncAfter(deadline: .now() + warmupInterval) { [weak self] in
+            guard let self = self, self.isRecording else { return }
+            self.startChunkTimer()
+            NSLog("📤 RealtimeAudioRecorder: Warmup complete, starting to send chunks")
         }
     }
 
@@ -232,8 +238,9 @@ class RealtimeAudioRecorder: NSObject {
         // Note: We DON'T stop the engine here - it keeps running for instant restart
         // Just process any remaining audio in the buffer
 
-        // Give a tiny delay to ensure the last audio buffer is processed
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+        // Give a delay to ensure the last audio buffer is processed
+        // This prevents losing the last ~100ms of audio
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self = self else { return }
             // Send remaining audio as final chunk
             self.sendChunk(isFinal: true)

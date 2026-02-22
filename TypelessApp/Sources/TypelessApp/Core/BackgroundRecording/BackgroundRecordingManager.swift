@@ -119,6 +119,10 @@ class BackgroundRecordingManager {
                     self.sessionId = newSessionId
                     NSLog("✅ [Background] Session started (ready to receive audio)")
 
+                    // Small delay to ensure backend is fully ready before sending pending chunks
+                    // This prevents ASRError when sending multiple chunks immediately after session creation
+                    try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+
                     // Send any pending audio chunks that were received while waiting for session
                     // This is critical even if user has stopped recording - ensures audio is not lost
                     await sendPendingAudioChunks()
