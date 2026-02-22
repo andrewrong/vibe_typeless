@@ -11,11 +11,17 @@ let package = Package(
             url: "https://github.com/apple/swift-testing.git",
             from: "0.10.0"
         ),
+        .package(
+            url: "https://github.com/AudioKit/AudioKit.git",
+            from: "5.6.0"
+        ),
     ],
     targets: [
         .executableTarget(
             name: "TypelessApp",
-            dependencies: [],
+            dependencies: [
+                .product(name: "AudioKit", package: "AudioKit"),
+            ],
             linkerSettings: [
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("AppKit"),

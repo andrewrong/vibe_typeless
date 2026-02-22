@@ -11,8 +11,9 @@ struct AudioRecorderTests {
     // MARK: - 基础功能测试
 
     @Test("Recorder initializes correctly")
+    @MainActor
     func testInitialization() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         #expect(recorder.isRecording == false)
         #expect(recorder.sampleRate == 16000.0)
@@ -20,8 +21,9 @@ struct AudioRecorderTests {
     }
 
     @Test("Permission check works")
+    @MainActor
     func testPermissionCheck() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         // 注意：实际权限测试需要在真机上运行
         // 这里只是测试方法存在
@@ -33,8 +35,9 @@ struct AudioRecorderTests {
     // MARK: - 状态转换测试
 
     @Test("Cannot start recording twice")
+    @MainActor
     func testDoubleStart() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         // 第一次启动
         try? recorder.startRecording()
@@ -50,8 +53,9 @@ struct AudioRecorderTests {
     }
 
     @Test("Cannot stop when not recording")
+    @MainActor
     func testStopWithoutStart() async {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         #expect(recorder.isRecording == false)
 
@@ -64,8 +68,9 @@ struct AudioRecorderTests {
     // MARK: - 快速开始/停止测试（边界情况）
 
     @Test("Rapid start/stop cycles")
+    @MainActor
     func testRapidStartStop() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         for i in 0..<10 {
             // 快速开始
@@ -84,8 +89,9 @@ struct AudioRecorderTests {
     }
 
     @Test("Very short recording (< 100ms)")
+    @MainActor
     func testVeryShortRecording() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         try? recorder.startRecording()
         #expect(recorder.isRecording == true)
@@ -103,8 +109,9 @@ struct AudioRecorderTests {
     // MARK: - 回调测试
 
     @Test("Audio chunk callback is triggered")
+    @MainActor
     func testAudioChunkCallback() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         var chunkCount = 0
         var finalChunkReceived = false
@@ -130,8 +137,9 @@ struct AudioRecorderTests {
     }
 
     @Test("Finished callback is triggered on stop")
+    @MainActor
     func testFinishedCallback() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         var finishedCalled = false
         recorder.onFinished = {
@@ -151,8 +159,9 @@ struct AudioRecorderTests {
     // MARK: - 并发测试
 
     @Test("Concurrent start/stop operations")
+    @MainActor
     func testConcurrentOperations() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         // 模拟并发操作
         await withTaskGroup(of: Void.self) { group in
@@ -182,8 +191,9 @@ struct AudioRecorderTests {
     // MARK: - 长时间录音测试
 
     @Test("Long recording session (5 seconds)")
+    @MainActor
     func testLongRecording() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         var chunksReceived = 0
         recorder.onAudioChunk = { _, _ in
@@ -207,8 +217,9 @@ struct AudioRecorderTests {
     // MARK: - 音频格式测试
 
     @Test("Audio format is correct")
+    @MainActor
     func testAudioFormat() async throws {
-        let recorder = RealtimeAudioRecorder()
+        let recorder = AudioKitRecorder()
 
         #expect(recorder.sampleRate == 16000.0)
         #expect(recorder.channels == 1)
@@ -232,6 +243,7 @@ struct AudioRecorderTests {
 struct BackgroundRecordingManagerTests {
 
     @Test("Manager initializes correctly")
+    @MainActor
     func testManagerInitialization() async throws {
         let manager = BackgroundRecordingManager()
 
@@ -239,6 +251,7 @@ struct BackgroundRecordingManagerTests {
     }
 
     @Test("Start recording changes state")
+    @MainActor
     func testStartRecording() async throws {
         let manager = BackgroundRecordingManager()
 
@@ -256,6 +269,7 @@ struct BackgroundRecordingManagerTests {
     }
 
     @Test("Stop without start is safe")
+    @MainActor
     func testStopWithoutStart() async {
         let manager = BackgroundRecordingManager()
 
