@@ -9,7 +9,7 @@ import os.log
 class BackgroundRecordingManager {
     // MARK: - Properties
 
-    private var audioRecorder: AudioKitRecorder?
+    private var audioRecorder: RealtimeAudioRecorder?
     private var asrService: ASRService
     private var textInjector: TextInjector
     private var powerMode: PowerModeManager
@@ -33,7 +33,7 @@ class BackgroundRecordingManager {
         self.textInjector = TextInjector()
         self.powerMode = PowerModeManager()
         self.previewWindow = PreviewWindow()
-        self.audioRecorder = AudioKitRecorder()
+        self.audioRecorder = RealtimeAudioRecorder()
 
         // Setup callback closures
         setupRecorderCallbacks()

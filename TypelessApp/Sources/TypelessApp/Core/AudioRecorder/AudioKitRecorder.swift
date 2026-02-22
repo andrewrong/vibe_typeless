@@ -139,10 +139,6 @@ class AudioKitRecorder {
             NSLog("🎤 AudioKitRecorder: Starting audio engine...")
             do {
                 try engine.start()
-
-                // Install raw tap on input node for actual audio capture
-                installAudioTap()
-
                 NSLog("✅ AudioKitRecorder: Audio engine started")
             } catch {
                 NSLog("❌ AudioKitRecorder: Failed to start engine: \(error)")
@@ -150,7 +146,6 @@ class AudioKitRecorder {
             }
         } else {
             NSLog("🎤 AudioKitRecorder: Audio engine already running")
-            installAudioTap()
         }
 
         // Clear buffer and reset state
@@ -159,23 +154,31 @@ class AudioKitRecorder {
         }
         isSendingFinalChunk = false
 
-        // Start recording
+        // Start recording BEFORE installing tap
+        // This ensures audio is captured from the very first buffer
         isRecording = true
-        NSLog("✅ AudioKitRecorder: Recording started")
+        NSLog("✅ AudioKitRecorder: Recording state enabled")
 
-        // Start timer to send chunks periodically
+        // Install tap AFTER isRecording is true
+        // This ensures no audio is lost at the beginning
+        installAudioTap()
+
+        // Small delay to allow audio tap to start capturing
+        // This prevents losing the first ~50ms of audio
+        Thread.sleep(forTimeInterval: 0.05) // 50ms warmup
+
+        NSLog("✅ AudioKitRecorder: Recording started (with 50ms warmup)")
+
+        // Start timer to send chunks periodically (after warmup)
         startChunkTimer()
-
-        // Send initial chunk after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak self] in
-            guard let self = self, self.isRecording else { return }
-            self.sendChunk(isFinal: false)
-        }
     }
 
     /// Install tap on input node for raw audio capture
     private func installAudioTap() {
-        guard let inputNode = engine?.input?.avAudioNode as? AVAudioInputNode else {
+        // Use AVAudioEngine's inputNode directly (more reliable than AudioKit's input)
+        let inputNode = engine?.avEngine.inputNode
+
+        guard let inputNode = inputNode else {
             NSLog("❌ AudioKitRecorder: Cannot get input node for tap")
             return
         }
@@ -192,8 +195,8 @@ class AudioKitRecorder {
 
     /// Remove tap from input node
     private func removeAudioTap() {
-        guard let inputNode = engine?.input?.avAudioNode as? AVAudioInputNode else { return }
-        inputNode.removeTap(onBus: 0)
+        let inputNode = engine?.avEngine.inputNode
+        inputNode?.removeTap(onBus: 0)
         NSLog("🎤 AudioKitRecorder: Audio tap removed")
     }
 
