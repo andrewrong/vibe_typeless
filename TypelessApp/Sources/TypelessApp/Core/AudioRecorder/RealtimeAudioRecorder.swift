@@ -113,24 +113,79 @@ class RealtimeAudioRecorder: NSObject {
         setupAudioEngine()
     }
 
+    private var isTapInstalled = false
+
     private func setupAudioEngine() {
+        NSLog("🎤 Setting up new audio engine...")
+
+        // Ensure any existing engine is fully cleaned up
+        if let oldEngine = audioEngine {
+            if oldEngine.isRunning {
+                oldEngine.stop()
+            }
+            oldEngine.inputNode.removeTap(onBus: 0)
+            NSLog("🎤 Cleaned up old engine")
+        }
+
         let engine = AVAudioEngine()
         self.audioEngine = engine
         self.inputNode = engine.inputNode
         let inputFormat = engine.inputNode.outputFormat(forBus: 0)
+
+        NSLog("🎤 Input format: \(inputFormat)")
+        NSLog("🎤 Sample rate: \(inputFormat.sampleRate) Hz")
+        NSLog("🎤 Channels: \(inputFormat.channelCount)")
+
+        // Check if format is valid
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            NSLog("❌ Invalid input format")
+            return
+        }
+
         engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, time in
             guard let self = self else { return }
             self.processAudioBuffer(buffer)
         }
+
+        isTapInstalled = true
+        NSLog("✅ Audio engine setup complete")
+    }
+
+    /// Clean up engine resources - called before creating new engine
+    private func cleanupEngine() {
+        guard let engine = audioEngine else { return }
+        NSLog("🎤 Cleaning up audio engine...")
+        engine.inputNode.removeTap(onBus: 0)
+        if engine.isRunning {
+            engine.stop()
+        }
+        audioEngine = nil
+        inputNode = nil
+        isTapInstalled = false
+        NSLog("✅ Audio engine cleaned up")
     }
 
     private var firstBufferTime: Date?
     private var bufferCount = 0
     private var recordingStartTime: Date?
 
+    private var consecutiveEmptyBuffers = 0
+
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
+        // Check for empty buffer
+        if buffer.frameLength == 0 {
+            consecutiveEmptyBuffers += 1
+            if consecutiveEmptyBuffers > 5 {
+                NSLog("⚠️ Too many consecutive empty buffers")
+            }
+            return
+        } else {
+            consecutiveEmptyBuffers = 0
+        }
+
         if firstBufferTime == nil {
             firstBufferTime = Date()
+            NSLog("🎙️ First buffer arrived: \(buffer.frameLength) frames, prewarming=\(isPrewarming)")
             if isPrewarming {
                 let sessionReady = isReadyToSend
                 completeRecordingStart(sessionReady: sessionReady)
@@ -205,25 +260,50 @@ class RealtimeAudioRecorder: NSObject {
     private let prewarmBufferQueue = DispatchQueue(label: "com.typeless.prewarmbuffer", qos: .userInitiated)
     private var isPrewarming: Bool = false
 
-    /// Start recording audio with ZERO latency
-    func startRecording(sessionReady: Bool = false) throws {
-        guard !isRecording else { return }
+    /// Track engine errors
+    private var engineStartError: Error?
 
-        if audioEngine == nil {
+    /// Start recording audio with ZERO latency
+    /// Reuses engine if available for fast startup, creates new one only if needed
+    func startRecording(sessionReady: Bool = false) throws {
+        guard !isRecording else {
+            NSLog("⚠️ Already recording, ignoring start request")
+            return
+        }
+
+        // Reuse engine if available for fast startup (prevents audio loss)
+        // Only create new one if there was an error or not initialized
+        if engineStartError != nil || audioEngine == nil {
+            NSLog("🎤 Creating new audio engine...")
+            cleanupEngine()
             setupAudioEngine()
+            engineStartError = nil
+        } else {
+            NSLog("🎤 Reusing existing audio engine for fast startup")
         }
 
         guard let engine = audioEngine else {
+            NSLog("❌ Audio engine not available")
             throw AudioRecorderError.configurationFailed
         }
 
+        // Ensure engine is running
         if !engine.isRunning {
+            NSLog("🎤 Starting audio engine...")
             do {
                 try engine.start()
+                NSLog("✅ Audio engine started successfully")
             } catch {
+                NSLog("❌ Failed to start audio engine: \(error)")
+                engineStartError = error
                 throw AudioRecorderError.recordingFailed(error)
             }
+        } else {
+            NSLog("🎤 Audio engine already running")
         }
+
+        let inputFormat = engine.inputNode.outputFormat(forBus: 0)
+        NSLog("🎤 Input format: \(inputFormat)")
 
         bufferQueue.async { [weak self] in
             self?.audioBuffer.removeAll()
@@ -238,6 +318,7 @@ class RealtimeAudioRecorder: NSObject {
         }
 
         isReadyToSend = sessionReady
+        NSLog("🎤 Recording setup complete, waiting for first buffer...")
     }
 
     /// Complete the recording start process (called when first audio buffer arrives)

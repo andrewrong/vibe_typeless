@@ -30,6 +30,9 @@ class BackgroundRecordingManager {
     private var totalAudioBytesSent: Int = 0
     private var recordingStartTime: Date?
 
+    /// Flag to track if recording has actually started (first buffer received)
+    private var hasRecordingStarted = false
+
     private let logger = OSLog(subsystem: "com.typeless.app", category: "BackgroundRecording")
 
     // MARK: - Initialization
@@ -67,6 +70,8 @@ class BackgroundRecordingManager {
         audioRecorder?.onFirstBuffer = { [weak self] in
             Task { @MainActor in
                 guard let self = self else { return }
+                self.hasRecordingStarted = true
+                NSLog("🎙️ First audio buffer received - now recording")
                 self.menuBarApp?.updateMenuBarState(.recording)
             }
         }
@@ -111,23 +116,29 @@ class BackgroundRecordingManager {
     func startRecording() async {
         do {
             menuBarApp?.updateMenuBarState(.preparing)
+            NSLog("🎙️ Starting recording...")
             _ = powerMode.detectAndUpdate()
             pendingAudioChunks.removeAll()
 
             // Create session if needed
             if sessionId == nil {
+                NSLog("⏳ Creating session...")
                 let appInfo = getAppInfo()
                 let newSessionId = try await asrService.startSession(appInfo: appInfo)
                 self.sessionId = newSessionId
+                NSLog("✅ Session created")
             }
 
             guard let recorder = audioRecorder else {
                 throw NSError(domain: "BackgroundRecording", code: -1, userInfo: [NSLocalizedDescriptionKey: "No audio recorder available"])
             }
+
+            NSLog("🎤 Starting audio recorder...")
             try recorder.startRecording(sessionReady: sessionId != nil)
 
             totalAudioBytesSent = 0
             recordingStartTime = Date()
+            hasRecordingStarted = false
             isRecording = true
 
         } catch {
@@ -171,6 +182,15 @@ class BackgroundRecordingManager {
     /// Stop background recording and inject text
     func stopRecording() async {
         guard let recorder = audioRecorder else { return }
+
+        // If recording hasn't actually started yet (still in preparing state),
+        // treat this as a cancel to avoid confusion
+        if !hasRecordingStarted {
+            NSLog("⚠️ Stop pressed before recording started - treating as cancel")
+            await cancelRecording()
+            return
+        }
+
         recorder.stopRecording()
     }
 
@@ -242,6 +262,7 @@ class BackgroundRecordingManager {
         menuBarApp?.updateMenuBarState(.idle)
         self.pendingAudioChunks.removeAll()
         self.sessionId = nil
+        self.hasRecordingStarted = false
 
         Task {
             await prepareNextSession()
@@ -253,8 +274,10 @@ class BackgroundRecordingManager {
         pendingAudioChunks.removeAll()
         audioRecorder?.stopRecording()
         isRecording = false
+        hasRecordingStarted = false
         sessionId = nil
         menuBarApp?.updateMenuBarState(.idle)
+        NSLog("❌ Recording cancelled")
     }
 
     /// Send a single audio chunk

@@ -153,7 +153,14 @@ class MenuBarApp: NSObject {
         updateMenuBarState(state)
     }
 
+    private var currentState: RecordingState = .idle
+
+    var isRecordingState: Bool {
+        return currentState == .recording
+    }
+
     func updateMenuBarState(_ state: RecordingState) {
+        currentState = state
         var iconName: String
         var color: NSColor
         var tooltip: String
@@ -165,16 +172,19 @@ class MenuBarApp: NSObject {
             color = .systemGray
             tooltip = "Start Recording (Right Control)"
             menuTitle = "Start Recording (Right Control)"
+            NSLog("📱 State: idle")
         case .preparing:
             iconName = "mic.circle.fill"
             color = .systemOrange
             tooltip = "Preparing... (please wait)"
             menuTitle = "Preparing..."
+            NSLog("📱 State: preparing")
         case .recording:
             iconName = "mic.circle.fill"
             color = .systemGreen
             tooltip = "Recording... (Right Control to stop, ESC to cancel)"
             menuTitle = "Stop Recording (Right Control)"
+            NSLog("📱 State: recording")
         }
 
         // Update icon with color
