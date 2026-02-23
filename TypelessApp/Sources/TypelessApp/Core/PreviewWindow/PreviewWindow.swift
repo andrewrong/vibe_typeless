@@ -33,6 +33,10 @@ class PreviewWindow: NSWindow {
         viewModel.clear()
     }
 
+    func setRecordingState(_ state: RecordingState) {
+        viewModel.setRecordingState(state)
+    }
+
     func show() {
         self.makeKeyAndOrderFront(nil)
         NSLog("Preview window shown")
@@ -44,9 +48,16 @@ class PreviewWindow: NSWindow {
     }
 }
 
+enum RecordingState {
+    case idle
+    case preparing
+    case recording
+}
+
 @MainActor
 class PreviewViewModel: ObservableObject {
     @Published var previewText: String = ""
+    @Published var recordingState: RecordingState = .idle
 
     func updateText(_ text: String) {
         if !text.isEmpty && text != previewText {
@@ -59,26 +70,53 @@ class PreviewViewModel: ObservableObject {
         self.previewText = ""
         NSLog("Preview cleared")
     }
+
+    func setRecordingState(_ state: RecordingState) {
+        self.recordingState = state
+        NSLog("Recording state changed: \(state)")
+    }
 }
 
 struct PreviewView: View {
     @ObservedObject var viewModel: PreviewViewModel
+
+    var statusText: String {
+        switch viewModel.recordingState {
+        case .idle:
+            return ""
+        case .preparing:
+            return "准备中..."
+        case .recording:
+            return "录音中..."
+        }
+    }
+
+    var statusColor: Color {
+        switch viewModel.recordingState {
+        case .idle:
+            return .secondary
+        case .preparing:
+            return .orange
+        case .recording:
+            return .green
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "waveform")
                     .font(.system(size: 16))
-                    .foregroundColor(.accentColor)
+                    .foregroundColor(statusColor)
 
                 Text("Live Preview")
                     .font(.headline)
 
                 Spacer()
 
-                Text("Recording...")
+                Text(statusText)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(statusColor)
             }
             .padding(.horizontal)
             .padding(.top, 8)

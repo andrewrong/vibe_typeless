@@ -169,27 +169,13 @@ class ASRService: NSObject {
         let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            NSLog("❌ [ASR] Stop session: not HTTP response")
             throw ASRError.networkError(URLError(.badServerResponse))
         }
 
         guard httpResponse.statusCode == 200 else {
-            let responseString = String(data: data, encoding: .utf8) ?? "no data"
-            NSLog("❌ [ASR] Stop session failed: \(httpResponse.statusCode)")
-            NSLog("❌ [ASR] Response body: \(responseString)")
             throw ASRError.serverError(httpResponse.statusCode, "Failed to stop session")
         }
 
-        NSLog("✅ [ASR] Stop session successful, parsing response...")
-        do {
-            let result = try JSONDecoder().decode(SessionStopResponse.self, from: data)
-            NSLog("✅ [ASR] Parsed transcript: '\(result.finalTranscript)'")
-            return result
-        } catch {
-            NSLog("❌ [ASR] Failed to decode response: \(error)")
-            let responseString = String(data: data, encoding: .utf8) ?? "no data"
-            NSLog("❌ [ASR] Response was: \(responseString)")
-            throw error
-        }
+        return try JSONDecoder().decode(SessionStopResponse.self, from: data)
     }
 }

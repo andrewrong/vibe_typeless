@@ -10,13 +10,19 @@ class MenuBarApp: NSObject {
     private var backgroundManager: BackgroundRecordingManager?
     var isRecording = false
 
+    enum RecordingState {
+        case idle
+        case preparing
+        case recording
+    }
+
     // MARK: - Initialization
 
     override init() {
         super.init()
 
         setupMenuBar()
-        backgroundManager = BackgroundRecordingManager()
+        backgroundManager = BackgroundRecordingManager(menuBarApp: self)
     }
 
     // MARK: - Setup
@@ -143,34 +149,49 @@ class MenuBarApp: NSObject {
     // MARK: - Helper Methods
 
     private func updateStatus(recording: Bool) {
-        let recordingIcon = NSImage(systemSymbolName: "record.circle.fill", accessibilityDescription: "Recording")
-        let idleIcon = NSImage(systemSymbolName: "mic.circle", accessibilityDescription: "Idle")
+        let state: RecordingState = recording ? .recording : .idle
+        updateMenuBarState(state)
+    }
 
-        statusItem?.button?.image = recording ? recordingIcon : idleIcon
+    func updateMenuBarState(_ state: RecordingState) {
+        var iconName: String
+        var color: NSColor
+        var tooltip: String
+        var menuTitle: String
 
-        if recording {
-            statusItem?.button?.toolTip = "Stop: Right Control | Cancel: ESC"
-            if let menu = statusItem?.menu {
-                // Update first item
-                if let item = menu.items.first {
-                    item.title = "Stop Recording (Right Control)"
-                }
-                // Show cancel item (tag 999)
-                if let cancelItem = menu.items.first(where: { $0.tag == 999 }) {
-                    cancelItem.isHidden = false
-                }
+        switch state {
+        case .idle:
+            iconName = "mic.circle"
+            color = .systemGray
+            tooltip = "Start Recording (Right Control)"
+            menuTitle = "Start Recording (Right Control)"
+        case .preparing:
+            iconName = "mic.circle.fill"
+            color = .systemOrange
+            tooltip = "Preparing... (please wait)"
+            menuTitle = "Preparing..."
+        case .recording:
+            iconName = "mic.circle.fill"
+            color = .systemGreen
+            tooltip = "Recording... (Right Control to stop, ESC to cancel)"
+            menuTitle = "Stop Recording (Right Control)"
+        }
+
+        // Update icon with color
+        if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: nil) {
+            let config = NSImage.SymbolConfiguration(paletteColors: [color])
+            statusItem?.button?.image = image.withSymbolConfiguration(config)
+        }
+
+        statusItem?.button?.toolTip = tooltip
+
+        // Update menu
+        if let menu = statusItem?.menu {
+            if let item = menu.items.first {
+                item.title = menuTitle
             }
-        } else {
-            statusItem?.button?.toolTip = "Start Recording (Right Control)"
-            if let menu = statusItem?.menu {
-                // Update first item
-                if let item = menu.items.first {
-                    item.title = "Start Recording (Right Control)"
-                }
-                // Hide cancel item (tag 999)
-                if let cancelItem = menu.items.first(where: { $0.tag == 999 }) {
-                    cancelItem.isHidden = true
-                }
+            if let cancelItem = menu.items.first(where: { $0.tag == 999 }) {
+                cancelItem.isHidden = (state != .recording)
             }
         }
     }

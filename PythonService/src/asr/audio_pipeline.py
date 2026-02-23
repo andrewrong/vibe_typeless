@@ -98,6 +98,10 @@ class SileroVAD:
         window_size_samples = 512  # 32ms at 16kHz
         segments = []
 
+        # Log first few window probabilities for debugging
+        prob_log_count = 0
+        max_prob_log = 10
+
         for i in range(0, len(audio_float), window_size_samples):
             chunk = audio_float[i:i + window_size_samples]
 
@@ -113,6 +117,15 @@ class SileroVAD:
                 prob = self.model(tensor_chunk, sample_rate).item()
 
             is_speech = prob >= self.threshold
+
+            # Log first few windows
+            if prob_log_count < max_prob_log:
+                time_offset = i / sample_rate
+                logger.info(f"🎤 [VAD-Detail] Window {prob_log_count} @ {time_offset:.3f}s: prob={prob:.3f}, threshold={self.threshold}, is_speech={is_speech}")
+                prob_log_count += 1
+            elif prob_log_count == max_prob_log:
+                logger.info(f"🎤 [VAD-Detail] ... (suppressing remaining {len(range(0, len(audio_float), window_size_samples)) - max_prob_log} windows)")
+                prob_log_count += 1
 
             segments.append(AudioSegment(
                 audio=audio[i:i + window_size_samples],
@@ -367,15 +380,33 @@ class AudioPipeline:
         segments_list = [processed_audio]
 
         if self.vad:
-            logger.info("🎤 Running VAD...")
+            logger.info("🎤 [VAD] Running VAD...")
+            logger.info(f"🎤 [VAD] Input audio: {len(processed_audio)} samples ({len(processed_audio)/16000:.3f}s)")
             vad_segments = self.vad.process(processed_audio)
+            logger.info(f"🎤 [VAD] VAD produced {len(vad_segments)} raw segments")
+
+            # Log first few VAD results for debugging
+            for i, seg in enumerate(vad_segments[:5]):
+                seg_duration = (seg.end_sample - seg.start_sample) / 16000
+                logger.info(f"🎤 [VAD] Raw segment {i}: samples {seg.start_sample}-{seg.end_sample} ({seg_duration:.3f}s), speech={seg.is_speech}")
+            if len(vad_segments) > 5:
+                logger.info(f"🎤 [VAD] ... and {len(vad_segments) - 5} more segments")
 
             # Merge speech segments
+            # NOTE: min_speech_duration reduced from 0.3s to 0.05s to preserve short initial speech
+            logger.info(f"🎤 [VAD] Merging segments (min_speech=0.05s, min_silence=0.3s)...")
             speech_segments = self.vad.merge_speech_segments(
                 vad_segments,
-                min_speech_duration=0.3,
+                min_speech_duration=0.05,
                 min_silence_duration=0.3
             )
+            logger.info(f"🎤 [VAD] After merging: {len(speech_segments)} speech segments")
+
+            # Log merged segments
+            for i, seg in enumerate(speech_segments[:3]):
+                seg_duration = len(seg.audio) / 16000
+                start_offset = seg.start_sample / 16000
+                logger.info(f"🎤 [VAD] Merged segment {i}: start={start_offset:.3f}s, duration={seg_duration:.3f}s, samples={len(seg.audio)}")
 
             if speech_segments:
                 segments_list = [seg.audio for seg in speech_segments]
@@ -386,7 +417,8 @@ class AudioPipeline:
                 logger.info(f"   VAD: {stats['segments']} speech segments, "
                           f"{stats['silence_removed'] / 16000:.2f}s silence removed")
             else:
-                logger.warning("   No speech detected, using full audio")
+                logger.warning("🎤 [VAD] No speech detected after merging! Using full audio")
+                logger.warning(f"   This means VAD filtered out all {len(vad_segments)} raw segments")
 
         # Step 3: Convert back to int16 for Whisper
         segments_int16 = [

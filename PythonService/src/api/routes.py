@@ -270,13 +270,17 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
 
     session = sessions[session_id]
 
-    # Log received data size
-    logger.info(f"Received audio chunk: {len(request)} bytes for session {session_id[:8]}...")
+    # Log received data size with timestamp for comparison with frontend
+    import time
+    receive_timestamp = time.time()
+    chunk_size = len(request)
+    chunks_received = session["chunks_received"]
+    logger.info(f"📥 [BackendAudio] Received chunk #{chunks_received}: {chunk_size} bytes at {receive_timestamp:.3f}")
 
     # Convert bytes to numpy array
     try:
         audio_array = np.frombuffer(request, dtype=np.int16)
-        logger.info(f"Converted to numpy array: {len(audio_array)} samples")
+        logger.info(f"📥 [BackendAudio] Converted to {len(audio_array)} samples ({len(audio_array)/16000*1000:.1f}ms audio)")
     except Exception as e:
         logger.error(f"Failed to convert audio data: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid audio data: {e}")
@@ -367,26 +371,42 @@ async def stop_session(session_id: str):
         logger.info("🎛️ Applying audio processing pipeline...")
 
         # Create audio pipeline
+        # TEMPORARILY DISABLE VAD to test if it causes audio loss at beginning
+        # TODO: Re-enable with better padding strategy after testing
         pipeline = AudioPipeline(
-            vad_threshold=0.5,
+            vad_threshold=0.3,
             enable_enhancement=True,
-            enable_vad=True
+            enable_vad=False  # Disabled for testing - was cutting off first 704ms
         )
 
         # Process audio
+        logger.info(f"🎛️ [BackendAudio] Starting pipeline processing...")
+        logger.info(f"🎛️ [BackendAudio] Original audio: {len(all_audio)} samples ({len(all_audio)/16000:.2f}s)")
+
         processed_segments, stats = pipeline.process(all_audio)
 
-        logger.info(f"   Processed {stats['segments']} segments, "
-                   f"removed {stats['silence_removed'] / 16000:.2f}s silence")
+        logger.info(f"🎛️ [BackendAudio] Pipeline complete:")
+        logger.info(f"   - Original: {stats['original_samples']} samples ({stats['original_duration']:.2f}s)")
+        logger.info(f"   - Segments after VAD: {stats['segments']}")
+        logger.info(f"   - Speech samples: {stats['speech_samples']} ({stats['speech_samples']/16000:.2f}s)")
+        logger.info(f"   - Silence removed: {stats['silence_removed']} samples ({stats['silence_removed'] / 16000:.2f}s)")
+        logger.info(f"   - Audio retained: {stats['speech_samples']/max(stats['original_samples'], 1)*100:.1f}%")
 
         # Transcribe each segment and combine
         transcripts = []
+        logger.info(f"📝 [BackendAudio] Starting transcription of {len(processed_segments)} segments...")
+
         for i, segment in enumerate(processed_segments):
-            logger.info(f"   Transcribing segment {i+1}/{len(processed_segments)} "
-                       f"({len(segment)} samples)")
+            segment_duration = len(segment) / 16000
+            logger.info(f"📝 [BackendAudio] Transcribing segment {i+1}/{len(processed_segments)}: {len(segment)} samples ({segment_duration:.2f}s)")
+
             segment_transcript = model.transcribe(segment, language="auto")
+            logger.info(f"📝 [BackendAudio] Segment {i+1} result: '{segment_transcript[:50] if len(segment_transcript) > 50 else segment_transcript}'...")
+
             if segment_transcript:
                 transcripts.append(segment_transcript)
+
+        logger.info(f"📝 [BackendAudio] Transcription complete: {len(transcripts)}/{len(processed_segments)} segments produced text")
 
         # Combine transcripts
         final_transcript = " ".join(transcripts).strip()

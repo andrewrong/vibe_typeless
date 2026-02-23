@@ -12,6 +12,7 @@ class RealtimeAudioRecorder: NSObject {
     var onAudioChunk: ((Data, Bool) -> Void)?
     var onError: ((Error) -> Void)?
     var onFinished: (() -> Void)?
+    var onFirstBuffer: (() -> Void)?
 
     private(set) var isRecording = false
     private(set) var sampleRate: Double = 16000.0
@@ -23,26 +24,57 @@ class RealtimeAudioRecorder: NSObject {
     /// Buffer for accumulating audio data between sends
     private var audioBuffer: Data = Data()
 
-    /// Timer for periodic chunk sending
-    private var chunkTimer: Timer?
-
     /// Serial queue for thread-safe buffer access
     private let bufferQueue = DispatchQueue(label: "com.typeless.audiobuffer", qos: .userInitiated)
 
-    /// Chunk interval in seconds
-    private let chunkInterval: TimeInterval = 0.1 // 100ms chunks for low latency
+    /// Flag to control when chunks should be sent (Session must be ready)
+    /// Manager sets this to true when ASR session is ready
+    private var isReadyToSend: Bool = false
 
-    /// Warmup time in seconds - audio captured during this period is kept but not sent immediately
-    /// This prevents losing the first ~100ms of audio
-    private let warmupInterval: TimeInterval = 0.1 // 100ms warmup
-
-    /// Timestamp when recording started (for warmup calculation)
-    private var recordingStartTime: Date?
+    /// Track total audio bytes sent for debugging
+    private var totalBytesSent: Int = 0
+    private var firstSendTime: Date?
+    private var lastSendTime: Date?
 
     // MARK: - Initialization
 
     override init() {
         super.init()
+    }
+
+    /// Called by manager when ASR session is ready
+    func markReadyToSend() {
+        guard isRecording else { return }
+        isReadyToSend = true
+        sendAccumulatedAudio()
+    }
+
+    /// Send accumulated audio from buffer in chunks
+    private func sendAccumulatedAudio() {
+        bufferQueue.sync { [weak self] in
+            guard let self = self, !self.audioBuffer.isEmpty else { return }
+
+            let chunkSize = 3200
+            let chunkIntervalMs = 100
+
+            var chunks: [Data] = []
+            var tempBuffer = self.audioBuffer
+            self.audioBuffer.removeAll()
+
+            while !tempBuffer.isEmpty {
+                let bytesToSend = min(chunkSize, tempBuffer.count)
+                let chunk = tempBuffer.prefix(bytesToSend)
+                tempBuffer.removeFirst(bytesToSend)
+                chunks.append(Data(chunk))
+            }
+
+            for (index, chunkData) in chunks.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * Double(chunkIntervalMs) / 1000.0) { [weak self] in
+                    guard let self = self, self.isRecording else { return }
+                    self.onAudioChunk?(chunkData, false)
+                }
+            }
+        }
     }
 
     // MARK: - Configuration
@@ -54,25 +86,16 @@ class RealtimeAudioRecorder: NSObject {
 
         switch authStatus {
         case .authorized:
-            NSLog("🎤 RealtimeAudioRecorder: Microphone permission already granted")
             return true
         case .notDetermined:
-            NSLog("🎤 RealtimeAudioRecorder: Requesting microphone permission...")
             return await withCheckedContinuation { continuation in
                 AVCaptureDevice.requestAccess(for: .audio) { granted in
-                    if granted {
-                        NSLog("✅ RealtimeAudioRecorder: Microphone permission granted")
-                    } else {
-                        NSLog("❌ RealtimeAudioRecorder: Microphone permission denied")
-                    }
                     continuation.resume(returning: granted)
                 }
             }
         case .denied, .restricted:
-            NSLog("❌ RealtimeAudioRecorder: Microphone permission denied or restricted")
             return false
         @unknown default:
-            NSLog("⚠️ RealtimeAudioRecorder: Unknown microphone permission status")
             return false
         }
         #else
@@ -80,70 +103,60 @@ class RealtimeAudioRecorder: NSObject {
         #endif
     }
 
-    /// Pre-initialize audio engine (but don't start it yet)
-    /// We'll start it on first recording to avoid resource conflicts
+    /// Pre-initialize audio engine
     func prepareRecorder() async {
-        // Check permission first
         if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
             let hasPermission = await requestPermission()
             guard hasPermission else { return }
         }
-
-        // Only create engine if not already exists
-        guard audioEngine == nil else {
-            return
-        }
-
+        guard audioEngine == nil else { return }
         setupAudioEngine()
-        NSLog("✅ RealtimeAudioRecorder: Audio engine configured and ready")
     }
 
     private func setupAudioEngine() {
         let engine = AVAudioEngine()
         self.audioEngine = engine
         self.inputNode = engine.inputNode
-
-        // Configure input format to match desired output format
         let inputFormat = engine.inputNode.outputFormat(forBus: 0)
-
-        // Install tap on input node to capture audio in real-time
         engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, time in
             guard let self = self else { return }
             self.processAudioBuffer(buffer)
         }
-
-        NSLog("🎤 RealtimeAudioRecorder: Audio engine configured")
-        NSLog("   Input format: \(inputFormat)")
     }
 
+    private var firstBufferTime: Date?
+    private var bufferCount = 0
+    private var recordingStartTime: Date?
+
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        // Only process audio when actually recording
-        // This allows the engine to run continuously with zero start latency
-        guard isRecording, !isSendingFinalChunk else { return }
+        if firstBufferTime == nil {
+            firstBufferTime = Date()
+            if isPrewarming {
+                let sessionReady = isReadyToSend
+                completeRecordingStart(sessionReady: sessionReady)
+                DispatchQueue.main.async { [weak self] in
+                    self?.onFirstBuffer?()
+                }
+            }
+        }
 
         let frameLength = Int(buffer.frameLength)
         guard frameLength > 0 else { return }
 
         var data = Data()
-        data.reserveCapacity(frameLength * 2) // Int16 = 2 bytes
+        data.reserveCapacity(frameLength * 2)
 
-        // Check buffer format and convert accordingly
         if buffer.format.commonFormat == .pcmFormatFloat32 {
-            // Convert Float32 to Int16
             guard let channelData = buffer.floatChannelData else { return }
-
             let channelDataPointer = channelData[0]
             for i in 0..<frameLength {
-                // Convert Float32 (-1.0 to 1.0) to Int16 (-32768 to 32767)
                 let sample = max(-1.0, min(1.0, Double(channelDataPointer[i])))
                 let intSample = Int16(sample * 32767.0)
                 data.append(UInt8(intSample & 0xFF))
                 data.append(UInt8((intSample >> 8) & 0xFF))
             }
         } else if buffer.format.commonFormat == .pcmFormatInt16 {
-            // Already Int16, just copy
             guard let channelData = buffer.int16ChannelData else { return }
-
             let channelDataPointer = channelData[0]
             for i in 0..<frameLength {
                 let sample = channelDataPointer[i]
@@ -154,180 +167,160 @@ class RealtimeAudioRecorder: NSObject {
             return
         }
 
-        // Accumulate in buffer (thread-safe)
+        if isPrewarming {
+            prewarmBufferQueue.async { [weak self] in
+                self?.prewarmBuffer.append(data)
+            }
+            return
+        }
+
+        guard isRecording, !isSendingFinalChunk else { return }
+        bufferCount += 1
+
         bufferQueue.async { [weak self] in
             guard let self = self else { return }
             self.audioBuffer.append(data)
+
+            if self.isReadyToSend && !self.isSendingFinalChunk {
+                let chunkData = Data(self.audioBuffer)
+                let chunkSize = chunkData.count
+                self.audioBuffer.removeAll()
+                self.totalBytesSent += chunkSize
+                if self.firstSendTime == nil {
+                    self.firstSendTime = Date()
+                }
+                self.lastSendTime = Date()
+                DispatchQueue.main.async { [weak self] in
+                    self?.onAudioChunk?(chunkData, false)
+                }
+            }
         }
     }
 
     // MARK: - Recording Control
 
-    /// Start recording audio with ZERO latency
-    /// AudioEngine should already be running, but will auto-start if needed
-    func startRecording() throws {
-        NSLog("🎤 RealtimeAudioRecorder: startRecording called")
-        guard !isRecording else {
-            NSLog("⚠️ RealtimeAudioRecorder: Already recording")
-            return
-        }
+    /// Pre-warmed audio buffer - captures audio before recording officially starts
+    /// This prevents losing the first ~100ms of audio due to hardware latency
+    private var prewarmBuffer: Data = Data()
+    private let prewarmBufferQueue = DispatchQueue(label: "com.typeless.prewarmbuffer", qos: .userInitiated)
+    private var isPrewarming: Bool = false
 
-        // Setup engine if not already done
+    /// Start recording audio with ZERO latency
+    func startRecording(sessionReady: Bool = false) throws {
+        guard !isRecording else { return }
+
         if audioEngine == nil {
-            NSLog("🎤 RealtimeAudioRecorder: Setting up audio engine...")
             setupAudioEngine()
         }
 
         guard let engine = audioEngine else {
-            NSLog("❌ RealtimeAudioRecorder: Audio engine not available")
             throw AudioRecorderError.configurationFailed
         }
 
-        // Start engine if not running
         if !engine.isRunning {
-            NSLog("🎤 RealtimeAudioRecorder: Starting audio engine...")
             do {
                 try engine.start()
-                NSLog("✅ RealtimeAudioRecorder: Audio engine started")
             } catch {
-                NSLog("❌ RealtimeAudioRecorder: Failed to start engine: \(error)")
                 throw AudioRecorderError.recordingFailed(error)
             }
-        } else {
-            NSLog("🎤 RealtimeAudioRecorder: Audio engine already running")
         }
 
-        // Clear buffer and reset state (thread-safe)
         bufferQueue.async { [weak self] in
             self?.audioBuffer.removeAll()
         }
         isSendingFinalChunk = false
+        firstBufferTime = nil
+        bufferCount = 0
 
-        // Start recording - just set the flag!
-        // Audio is already being captured by the running engine
+        isPrewarming = true
+        prewarmBufferQueue.async { [weak self] in
+            self?.prewarmBuffer.removeAll()
+        }
+
+        isReadyToSend = sessionReady
+    }
+
+    /// Complete the recording start process (called when first audio buffer arrives)
+    private func completeRecordingStart(sessionReady: Bool) {
+        guard isPrewarming else { return }
+
+        isPrewarming = false
         isRecording = true
         recordingStartTime = Date()
-        NSLog("✅ RealtimeAudioRecorder: Recording started (TRUE zero latency, with \(Int(warmupInterval * 1000))ms warmup)")
 
-        // Start timer to send chunks periodically (after warmup period)
-        // Warmup ensures we don't lose the first ~100ms of audio
-        DispatchQueue.main.asyncAfter(deadline: .now() + warmupInterval) { [weak self] in
-            guard let self = self, self.isRecording else { return }
-            self.startChunkTimer()
-            NSLog("📤 RealtimeAudioRecorder: Warmup complete, starting to send chunks")
+        // Move prewarm buffer to main audio buffer
+        prewarmBufferQueue.sync { [weak self] in
+            guard let self = self else { return }
+            if !self.prewarmBuffer.isEmpty {
+                self.bufferQueue.async {
+                    self.audioBuffer.append(self.prewarmBuffer)
+                }
+                self.prewarmBuffer.removeAll()
+            }
         }
     }
 
     /// Stop recording audio
-    /// Note: AudioEngine keeps running for instant next recording
     func stopRecording() {
-        NSLog("🎤 RealtimeAudioRecorder: stopRecording called")
-        guard isRecording else {
-            NSLog("⚠️ RealtimeAudioRecorder: Not recording")
+        guard isRecording || isPrewarming else { return }
+
+        // If still prewarming (user stopped before first buffer arrived), cancel prewarming
+        if isPrewarming {
+            isPrewarming = false
+            prewarmBuffer.removeAll()
             return
         }
 
-        // Stop timer first
-        chunkTimer?.invalidate()
-        chunkTimer = nil
-
-        // Mark that we're sending final chunk
         isSendingFinalChunk = true
-        NSLog("🎤 RealtimeAudioRecorder: Sending final audio chunk...")
-
-        // Note: We DON'T stop the engine here - it keeps running for instant restart
-        // Just process any remaining audio in the buffer
-
-        // Give a delay to ensure the last audio buffer is processed
-        // This prevents losing the last ~100ms of audio
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self = self else { return }
-            // Send remaining audio as final chunk
-            self.sendChunk(isFinal: true)
-        }
-    }
-
-    /// Called when final chunk has been sent
-    func finishStopping() {
-        NSLog("🎤 RealtimeAudioRecorder: Finishing stop (final chunk sent)")
-
-        // Reset state for next recording
-        // Note: AudioEngine keeps running, just reset recording state
         isRecording = false
-        isSendingFinalChunk = false
+
+        // Send remaining audio immediately
         bufferQueue.async { [weak self] in
-            self?.audioBuffer.removeAll()
-        }
-
-        NSLog("✅ RealtimeAudioRecorder: Recording stopped (engine still running for instant restart)")
-    }
-
-    // MARK: - Private Methods
-
-    private func startChunkTimer() {
-        // Send audio chunks every 100ms for low latency
-        chunkTimer = Timer.scheduledTimer(withTimeInterval: chunkInterval, repeats: true) { [weak self] _ in
-            guard let self = self, self.isRecording, !self.isSendingFinalChunk else { return }
-            self.sendChunk(isFinal: false)
-        }
-    }
-
-    private func sendChunk(isFinal: Bool) {
-        // Get buffer data (thread-safe)
-        bufferQueue.sync { [weak self] in
             guard let self = self else { return }
-
-            guard !self.audioBuffer.isEmpty else {
-                if isFinal {
-                    DispatchQueue.main.async { [weak self] in self?.onFinished?() }
+            if !self.audioBuffer.isEmpty {
+                let chunkData = Data(self.audioBuffer)
+                self.audioBuffer.removeAll()
+                DispatchQueue.main.async { [weak self] in
+                    self?.onAudioChunk?(chunkData, true)
+                    self?.onFinished?()
                 }
-                return
-            }
-
-            let pcmData = self.audioBuffer
-            self.audioBuffer.removeAll()
-
-            // Process the data
-            let sampleSize = 2
-            let padding = pcmData.count % sampleSize
-            let alignedData = padding > 0 ? pcmData.dropLast(padding) : pcmData
-
-            guard !alignedData.isEmpty else {
-                if isFinal {
-                    DispatchQueue.main.async { [weak self] in self?.onFinished?() }
-                }
-                return
-            }
-
-            NSLog("📤 RealtimeAudioRecorder: Sending chunk: \(alignedData.count) bytes (\(alignedData.count / 2) samples, final=\(isFinal))")
-
-            // Create buffer for callback
-            let frameCapacity = alignedData.count / sampleSize
-            guard let format = AVAudioFormat(
-                commonFormat: .pcmFormatInt16,
-                sampleRate: self.sampleRate,
-                channels: self.channels,
-                interleaved: false
-            ), let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCapacity)) else {
-                if isFinal {
-                    DispatchQueue.main.async { [weak self] in self?.onFinished?() }
-                }
-                return
-            }
-
-            buffer.frameLength = AVAudioFrameCount(frameCapacity)
-
-            // Callback on main thread - capture data explicitly
-            let chunkData = Data(alignedData)
-            let finalChunk = isFinal
-            DispatchQueue.main.async { [weak self] in
-                self?.onAudioChunk?(chunkData, finalChunk)
-
-                // If this was the final chunk, trigger onFinished after sending
-                if finalChunk {
+            } else {
+                DispatchQueue.main.async { [weak self] in
                     self?.onFinished?()
                 }
             }
         }
     }
+
+    /// Called when final chunk has been sent
+    func finishStopping() {
+        // Reset state for next recording
+        isSendingFinalChunk = false
+        isReadyToSend = false
+        isPrewarming = false
+        firstBufferTime = nil
+        bufferCount = 0
+        recordingStartTime = nil
+        totalBytesSent = 0
+        firstSendTime = nil
+        lastSendTime = nil
+        prewarmBuffer.removeAll()
+
+        // Stop the engine and remove tap to prevent AUGraph conflicts on restart
+        if let engine = audioEngine {
+            engine.inputNode.removeTap(onBus: 0)
+            if engine.isRunning {
+                engine.stop()
+            }
+            self.audioEngine = nil
+            self.inputNode = nil
+        }
+
+        // Clear buffer
+        bufferQueue.async { [weak self] in
+            self?.audioBuffer.removeAll()
+        }
+    }
+
+    // MARK: - Private Methods
 }

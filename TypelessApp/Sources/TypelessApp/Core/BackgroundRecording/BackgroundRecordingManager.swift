@@ -13,10 +13,12 @@ class BackgroundRecordingManager {
     private var asrService: ASRService
     private var textInjector: TextInjector
     private var powerMode: PowerModeManager
-    private var previewWindow: PreviewWindow?
     private var sessionId: String?
 
     private(set) var isRecording = false
+
+    /// Reference to menu bar app for status updates
+    weak var menuBarApp: MenuBarApp?
 
     /// Buffer for audio chunks received before session is ready
     private var pendingAudioChunks: [Data] = []
@@ -24,23 +26,26 @@ class BackgroundRecordingManager {
     /// Flag to track if pending chunks are being sent
     private var isSendingPendingChunks = false
 
+    /// Track total audio bytes sent for comparison with ASR result
+    private var totalAudioBytesSent: Int = 0
+    private var recordingStartTime: Date?
+
     private let logger = OSLog(subsystem: "com.typeless.app", category: "BackgroundRecording")
 
     // MARK: - Initialization
 
-    init() {
+    init(menuBarApp: MenuBarApp? = nil) {
         self.asrService = ASRService()
         self.textInjector = TextInjector()
         self.powerMode = PowerModeManager()
-        self.previewWindow = PreviewWindow()
         self.audioRecorder = RealtimeAudioRecorder()
+        self.menuBarApp = menuBarApp
 
-        // Setup callback closures
         setupRecorderCallbacks()
 
-        // Pre-initialize recorder to reduce startup latency
         Task {
             await self.audioRecorder?.prepareRecorder()
+            await prepareNextSession()
         }
     }
 
@@ -58,18 +63,20 @@ class BackgroundRecordingManager {
                 await self.finalizeStopRecording()
             }
         }
+
+        audioRecorder?.onFirstBuffer = { [weak self] in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.menuBarApp?.updateMenuBarState(.recording)
+            }
+        }
     }
 
     private func handleAudioChunk(data: Data, isFinal: Bool) async {
-        // Check if still recording
-        guard isRecording else {
-            NSLog("⚠️ [Background] Recording stopped, skipping audio chunk")
-            return
-        }
+        guard isRecording else { return }
+        totalAudioBytesSent += data.count
 
-        // If no session yet, buffer the audio chunk for later
         guard let sessionId = sessionId else {
-            NSLog("⏳ [Background] No session ID yet, buffering audio chunk (\(data.count) bytes)")
             pendingAudioChunks.append(data)
             return
         }
@@ -88,61 +95,46 @@ class BackgroundRecordingManager {
         }
     }
 
+    /// Pre-create ASR session so it's ready when user presses hotkey
+    func prepareNextSession() async {
+        guard sessionId == nil else { return }
+        do {
+            let appInfo = getAppInfo()
+            let newSessionId = try await asrService.startSession(appInfo: appInfo)
+            self.sessionId = newSessionId
+        } catch {
+            NSLog("⚠️ Failed to pre-create session: \(error.localizedDescription)")
+        }
+    }
+
     /// Start background recording
     func startRecording() async {
-        NSLog("🎙️ [Background] Starting recording...")
-
         do {
-            // Detect current app for Power Mode
+            menuBarApp?.updateMenuBarState(.preparing)
             _ = powerMode.detectAndUpdate()
-            NSLog("📱 [Background] Power Mode: \(powerMode.getCategory())")
-
-            // Clear any pending chunks from previous session
             pendingAudioChunks.removeAll()
 
-            // Start audio recorder FIRST (don't wait for network)
-            // This ensures audio is captured immediately when user presses the key
+            // Create session if needed
+            if sessionId == nil {
+                let appInfo = getAppInfo()
+                let newSessionId = try await asrService.startSession(appInfo: appInfo)
+                self.sessionId = newSessionId
+            }
+
             guard let recorder = audioRecorder else {
                 throw NSError(domain: "BackgroundRecording", code: -1, userInfo: [NSLocalizedDescriptionKey: "No audio recorder available"])
             }
-            try recorder.startRecording()
+            try recorder.startRecording(sessionReady: sessionId != nil)
 
-            // Mark as recording immediately so audio chunks are accepted
+            totalAudioBytesSent = 0
+            recordingStartTime = Date()
             isRecording = true
-            NSLog("✅ [Background] Recording started (audio capturing)")
 
-            // Then create ASR session in background (this may take time due to network)
-            Task {
-                do {
-                    let appInfo = getAppInfo()
-                    let newSessionId = try await asrService.startSession(appInfo: appInfo)
-                    self.sessionId = newSessionId
-                    NSLog("✅ [Background] Session started (ready to receive audio)")
-
-                    // Small delay to ensure backend is fully ready before sending pending chunks
-                    // This prevents ASRError when sending multiple chunks immediately after session creation
-                    try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
-
-                    // Send any pending audio chunks that were received while waiting for session
-                    // This is critical even if user has stopped recording - ensures audio is not lost
-                    await sendPendingAudioChunks()
-
-                    // If user has already stopped recording (isRecording is false), trigger finalize now
-                    // This ensures pending chunks are processed before stopSession
-                    if !self.isRecording && !self.pendingAudioChunks.isEmpty {
-                        NSLog("⏳ [Background] User stopped during session creation, finalizing...")
-                        // The pending chunks are already sent above
-                    }
-                } catch {
-                    NSLog("❌ [Background] Failed to create session: \(error.localizedDescription)")
-                    // Don't stop recording, just log the error
-                    // The user can still cancel manually
-                }
-            }
         } catch {
-            NSLog("❌ [Background] Failed to start: \(error.localizedDescription)")
+            NSLog("❌ Failed to start recording: \(error.localizedDescription)")
             isRecording = false
             pendingAudioChunks.removeAll()
+            menuBarApp?.updateMenuBarState(.idle)
         }
     }
 
@@ -159,21 +151,13 @@ class BackgroundRecordingManager {
 
         guard !chunksToSend.isEmpty else { return }
 
-        NSLog("📤 [Background] Sending \(chunksToSend.count) pending audio chunks...")
-
-        for (index, data) in chunksToSend.enumerated() {
+        for (_, data) in chunksToSend.enumerated() {
             do {
-                let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
-                if !transcript.isEmpty {
-                    NSLog("📝 [Background] Preview from pending chunk \(index+1): \(transcript.prefix(50))...")
-                    previewWindow?.updateText(transcript)
-                }
+                _ = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
             } catch {
-                NSLog("❌ [Background] Failed to send pending chunk \(index+1): \(error.localizedDescription)")
+                NSLog("❌ Failed to send pending chunk: \(error.localizedDescription)")
             }
         }
-
-        NSLog("✅ [Background] Finished sending pending chunks")
     }
 
     /// Get current app information
@@ -186,136 +170,123 @@ class BackgroundRecordingManager {
 
     /// Stop background recording and inject text
     func stopRecording() async {
-        NSLog("⏹️ [Background] Stopping recording...")
-
-        guard let recorder = audioRecorder else {
-            NSLog("❌ [Background] No recorder")
-            return
-        }
-
-        // Stop recording - this will trigger final chunk send
-        // The actual stop and cleanup will happen in audioRecorderDidFinishSendingFinalChunk
+        guard let recorder = audioRecorder else { return }
         recorder.stopRecording()
-        // Don't set isRecording = false yet - wait for final chunk to be sent
     }
 
     /// Called when final audio chunk has been sent
     private func finalizeStopRecording() async {
-        NSLog("⏹️ [Background] Finalizing stop recording...")
-
-        // Now stop the recorder completely
         audioRecorder?.finishStopping()
         isRecording = false
 
-        // Wait for any pending chunks to finish sending (from earlier sendPendingAudioChunks call)
+        // Wait for pending chunks
         if isSendingPendingChunks {
-            NSLog("⏳ [Background] Waiting for pending chunks to finish sending...")
-            // Give it a short time to complete (max 2 seconds)
             var attempts = 0
             while isSendingPendingChunks && attempts < 20 {
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                try? await Task.sleep(nanoseconds: 100_000_000)
                 attempts += 1
             }
         }
 
-        // Wait for session to be created if it hasn't been yet
-        // This handles the case where user stops recording before session creation completes
+        // Handle session not found (404) by recreating session
         if sessionId == nil {
-            NSLog("⏳ [Background] Waiting for session to be created...")
-            var attempts = 0
-            while sessionId == nil && attempts < 50 { // Max 5 seconds wait
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                attempts += 1
-            }
-            if sessionId == nil {
-                NSLog("❌ [Background] Session was not created in time, discarding recording")
-            } else {
-                NSLog("✅ [Background] Session created after wait, proceeding with stop...")
+            do {
+                let appInfo = getAppInfo()
+                let newSessionId = try await asrService.startSession(appInfo: appInfo)
+                self.sessionId = newSessionId
+            } catch {
+                menuBarApp?.updateMenuBarState(.idle)
+                return
             }
         }
 
-        // If we have a session, send remaining pending chunks and stop
         if let sessionId = sessionId {
-            // Send any remaining pending chunks
             if !pendingAudioChunks.isEmpty {
-                NSLog("📤 [Background] Sending remaining pending chunks before stop...")
                 await sendPendingAudioChunks()
             }
+
+            try? await Task.sleep(nanoseconds: 500_000_000)
 
             do {
                 let result = try await asrService.stopSession(sessionId: sessionId)
                 let transcript = result.finalTranscript
 
-                NSLog("📝 [Background] Transcript: \(transcript)")
-
-                // Inject text if not empty
                 if !transcript.isEmpty {
                     try await textInjector.inject(text: transcript)
-                    NSLog("✅ [Background] Text injected successfully")
-                } else {
-                    NSLog("⚠️ [Background] Empty transcript, skipping injection")
+                }
+            } catch ASRError.serverError(404, _) {
+                // Session not found - backend may have restarted
+                NSLog("⚠️ Session not found on stop (404), creating new session...")
+                self.sessionId = nil
+
+                do {
+                    let appInfo = getAppInfo()
+                    let newSessionId = try await asrService.startSession(appInfo: appInfo)
+                    self.sessionId = newSessionId
+                    NSLog("✅ New session created, retrying stop...")
+
+                    // Retry stop with new session (though this will be a fresh empty session)
+                    let result = try await asrService.stopSession(sessionId: newSessionId)
+                    let transcript = result.finalTranscript
+                    if !transcript.isEmpty {
+                        try await textInjector.inject(text: transcript)
+                    }
+                } catch {
+                    NSLog("❌ Failed to recreate session: \(error.localizedDescription)")
                 }
             } catch {
-                NSLog("❌ [Background] Failed to stop session: \(error)")
+                NSLog("❌ Failed to stop session: \(error)")
             }
         }
 
-        // Hide preview window
-        previewWindow?.hide()
-
-        // Clean up
-        self.sessionId = nil
+        menuBarApp?.updateMenuBarState(.idle)
         self.pendingAudioChunks.removeAll()
+        self.sessionId = nil
+
+        Task {
+            await prepareNextSession()
+        }
     }
 
     /// Cancel recording without saving transcript
     func cancelRecording() async {
-        NSLog("❌ [Background] Cancelling recording...")
-
-        // Clear pending chunks
         pendingAudioChunks.removeAll()
-
-        guard let recorder = audioRecorder else {
-            NSLog("❌ [Background] No recorder to cancel")
-            return
-        }
-
-        // Stop recording
-        recorder.stopRecording()
+        audioRecorder?.stopRecording()
         isRecording = false
-
-        // Cancel ASR session (discard results)
-        if let sessionId = sessionId {
-            // Note: We don't call stopSession, just discard the session
-            // The backend will timeout and clean up
-            NSLog("🗑️ [Background] Discarded session: \(sessionId)")
-        }
-
-        // Hide preview window
-        previewWindow?.hide()
-
-        self.sessionId = nil
-
-        NSLog("✅ [Background] Recording cancelled, transcript discarded")
+        sessionId = nil
+        menuBarApp?.updateMenuBarState(.idle)
     }
 
     /// Send a single audio chunk
+    /// Handles session not found (404) by automatically recreating the session
     private func sendAudioChunk(sessionId: String, data: Data, isFinal: Bool) async {
         do {
             let transcript = try await asrService.sendAudio(sessionId: sessionId, audioData: data)
-
-            // Update preview window with partial transcript
             if !transcript.isEmpty {
-                NSLog("📝 [Background] Preview: \(transcript.prefix(50))...")
-                previewWindow?.updateText(transcript)
+                NSLog("📝 Preview: \(transcript.prefix(50))...")
             }
+        } catch ASRError.serverError(404, _) {
+            // Session not found - backend may have restarted
+            NSLog("⚠️ Session not found (404), recreating session...")
+            self.sessionId = nil
 
-            // If this is the final chunk, notify that we're done
-            if isFinal {
-                NSLog("✅ [Background] Final audio chunk sent successfully")
+            // Create new session
+            do {
+                let appInfo = getAppInfo()
+                let newSessionId = try await asrService.startSession(appInfo: appInfo)
+                self.sessionId = newSessionId
+                NSLog("✅ New session created: \(newSessionId.prefix(8))...")
+
+                // Retry sending the audio chunk with new session
+                let transcript = try await asrService.sendAudio(sessionId: newSessionId, audioData: data)
+                if !transcript.isEmpty {
+                    NSLog("📝 Preview (after retry): \(transcript.prefix(50))...")
+                }
+            } catch {
+                NSLog("❌ Failed to recreate session: \(error.localizedDescription)")
             }
         } catch {
-            NSLog("❌ [Background] Failed to send audio: \(error.localizedDescription)")
+            NSLog("❌ Failed to send audio: \(error.localizedDescription)")
         }
     }
 }
