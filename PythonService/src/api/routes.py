@@ -289,27 +289,30 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
     session["audio_chunks"].append(audio_array)
     session["chunks_received"] += 1
 
-    # Real-time preview: transcribe every 5 chunks
+    # Real-time preview: transcribe every 5 chunks (only recent chunks for performance)
     CHUNKS_FOR_PREVIEW = 5
     partial_transcript = ""
 
     if session['chunks_received'] % CHUNKS_FOR_PREVIEW == 0:
-        logger.info(f"🔄 Real-time preview: transcribing {session['chunks_received']} chunks...")
-
-        # Combine all chunks so far and transcribe
-        all_audio = np.concatenate(session["audio_chunks"])
+        # Only transcribe recent chunks (maintain data locality, O(1) complexity)
+        RECENT_CHUNKS_FOR_PREVIEW = 5
+        recent_chunks = session["audio_chunks"][-RECENT_CHUNKS_FOR_PREVIEW:]
+        logger.info(f"🔄 Real-time preview: transcribing {len(recent_chunks)} recent chunks (total received: {session['chunks_received']})")
 
         try:
+            # Combine only recent chunks for preview (fast)
+            recent_audio = np.concatenate(recent_chunks)
+
             # Apply audio pipeline for preview (faster, no VAD for speed)
             model = _get_asr_model_instance()
 
             # For preview, skip VAD to save time
             from src.asr.audio_pipeline import AudioEnhancer
             enhancer = AudioEnhancer()
-            enhanced = enhancer.enhance(all_audio.astype(np.float32) / 32768.0)
+            enhanced = enhancer.enhance(recent_audio.astype(np.float32) / 32768.0)
             enhanced_int16 = (enhanced * 32767).astype(np.int16)
 
-            # Transcribe
+            # Transcribe only recent audio
             partial_transcript = model.transcribe(enhanced_int16, language="auto")
 
             # Apply processing for preview (punctuation + dictionary)
