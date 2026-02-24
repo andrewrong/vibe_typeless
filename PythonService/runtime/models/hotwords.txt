@@ -1,0 +1,1812 @@
+# Financial & Investment Terms
+sell put
+buy call
+sell call
+buy put
+short put
+short call
+long put
+long call
+put option
+call option
+naked put
+covered call
+cash secured put
+iron condor
+butterfly spread
+straddle
+strangle
+ETF
+REITs
+IPO
+CPI
+PPI
+GDP
+PMI
+M1
+M2
+PE ratio
+PB ratio
+ROE
+EPS
+BPS
+CAPM
+A share
+H share
+blue chip
+growth stock
+value stock
+small cap
+large cap
+mid cap
+market cap
+dividend yield
+ex-dividend
+split
+merger
+acquisition
+bull market
+bear market
+short selling
+margin trading
+leverage
+stop loss
+take profit
+position sizing
+risk management
+portfolio
+asset allocation
+rebalancing
+dollar cost averaging
+DCA
+compound interest
+annualized return
+volatility
+liquidity
+market maker
+limit order
+market order
+trailing stop
+good till cancelled
+GTC
+fill or kill
+FOK
+immediately or cancel
+IOC
+after hours trading
+pre market
+opening bell
+closing bell
+
+# Options Trading
+strike price
+expiration date
+in the money
+out of the money
+at the money
+intrinsic value
+time value
+implied volatility
+IV
+greeks
+delta
+gamma
+theta
+vega
+rho
+open interest
+volume
+bid ask spread
+assignment
+exercise
+american option
+european option
+binary option
+barrier option
+asian option
+lookback option
+bermudan option
+compound option
+chooser option
+shout option
+rainbow option
+quanto option
+exchange option
+power option
+capped option
+ladder option
+cliquet option
+knock in
+knock out
+up and in
+up and out
+down and in
+down and out
+reset strike
+average price
+average strike
+forward start
+cliquet
+ratchet
+ladder
+shout
+
+# Computer Science & Programming
+API
+REST API
+GraphQL
+Docker
+Kubernetes
+K8s
+container
+microservice
+serverless
+cloud native
+CI/CD
+DevOps
+Git
+GitHub
+GitLab
+version control
+branch
+commit
+merge
+pull request
+PR
+repository
+repo
+clone
+fork
+stash
+rebase
+cherry pick
+gitignore
+Dockerfile
+Docker Compose
+docker swarm
+kubectl
+helm
+istio
+envoy
+prometheus
+grafana
+ELK stack
+nginx
+apache
+tomcat
+redis
+memcached
+RabbitMQ
+Kafka
+message queue
+MQ
+event driven
+CQRS
+event sourcing
+saga pattern
+circuit breaker
+timeout
+retry
+backoff
+rate limiting
+load balancing
+load balancer
+reverse proxy
+CDN
+WAF
+DDoS
+SSL
+TLS
+HTTPS
+OAuth
+JWT
+OpenID
+SSO
+single sign on
+authentication
+authorization
+RBAC
+role based access control
+ACL
+access control list
+encryption
+decryption
+hash
+SHA256
+MD5
+RSA
+AES
+symmetric encryption
+asymmetric encryption
+public key
+private key
+certificate
+CA
+certificate authority
+blockchain
+web3
+cryptocurrency
+crypto
+Bitcoin
+Ethereum
+NFT
+DeFi
+decentralized finance
+smart contract
+proof of work
+proof of stake
+mining
+staking
+DAO
+decentralized autonomous organization
+metaverse
+AR
+augmented reality
+VR
+virtual reality
+MR
+mixed reality
+XR
+extended reality
+AI
+artificial intelligence
+machine learning
+ML
+deep learning
+DL
+neural network
+NN
+cnn
+convolutional neural network
+RNN
+recurrent neural network
+LSTM
+long short term memory
+transformer
+BERT
+GPT
+large language model
+LLM
+natural language processing
+NLP
+computer vision
+CV
+reinforcement learning
+RL
+generative AI
+GenAI
+computer graphics
+CG
+GPU
+CUDA
+OpenCL
+OpenGL
+Vulkan
+DirectX
+WebGL
+WebAssembly
+WASM
+JavaScript
+TypeScript
+Python
+Java
+Go
+golang
+Rust
+C++
+C sharp
+PHP
+Ruby
+Swift
+Kotlin
+Scala
+Clojure
+Haskell
+Erlang
+Elixir
+Lua
+Perl
+R language
+MATLAB
+Julia
+Dart
+Flutter
+React
+React Native
+Vue
+Angular
+Svelte
+SolidJS
+Next.js
+Nuxt.js
+Gatsby
+Astro
+Remix
+SvelteKit
+Express
+Koa
+Fastify
+NestJS
+Django
+Flask
+FastAPI
+Tornado
+Spring Boot
+Spring Framework
+Hibernate
+MyBatis
+.NET
+ASP.NET
+Entity Framework
+Laravel
+Symfony
+CodeIgniter
+Ruby on Rails
+Sinatra
+Phoenix
+Actix
+Axum
+Rocket
+Tide
+Warp
+Gin
+Echo
+Beego
+Revel
+Martini
+Fiber
+Buffalo
+GORM
+SQLAlchemy
+SQL
+MySQL
+PostgreSQL
+SQLite
+Oracle
+SQL Server
+MongoDB
+Redis
+Elasticsearch
+Cassandra
+CockroachDB
+ClickHouse
+InfluxDB
+TimescaleDB
+Neo4j
+ArangoDB
+CouchDB
+DynamoDB
+Firebase
+Firestore
+Supabase
+Prisma
+TypeORM
+Sequelize
+Mongoose
+Hibernate
+JPA
+JDBC
+ODBC
+ORM
+object relational mapping
+cache
+caching
+cache invalidation
+cache eviction
+LRU
+least recently used
+LFU
+least frequently used
+TTL
+time to live
+CDN
+content delivery network
+DNS
+domain name system
+IP address
+IPv4
+IPv6
+TCP
+UDP
+HTTP
+HTTP2
+HTTP3
+WebSocket
+WebRTC
+gRPC
+protobuf
+protocol buffers
+thrift
+Avro
+MessagePack
+JSON
+XML
+YAML
+TOML
+CSV
+TSV
+Parquet
+ORC
+Avro
+protobuf
+serialization
+deserialization
+marshalling
+unmarshalling
+encoding
+decoding
+base64
+hex
+binary
+UTF-8
+ASCII
+Unicode
+regex
+regular expression
+pattern matching
+string manipulation
+parsing
+tokenization
+lexical analysis
+syntax analysis
+AST
+abstract syntax tree
+compiler
+interpreter
+JIT
+just in time compilation
+AOT
+ahead of time compilation
+bytecode
+assembly
+machine code
+linker
+loader
+symbol table
+debugging
+profiling
+benchmarking
+unit testing
+integration testing
+E2E testing
+end to end testing
+TDD
+test driven development
+BDD
+behavior driven development
+mock
+stub
+spy
+fixture
+coverage
+regression testing
+load testing
+stress testing
+chaos engineering
+observability
+monitoring
+logging
+tracing
+distributed tracing
+OpenTelemetry
+Jaeger
+Zipkin
+Sentry
+Datadog
+New Relic
+PagerDuty
+incident management
+runbook
+playbook
+SRE
+site reliability engineering
+SLA
+service level agreement
+SLO
+service level objective
+SLI
+service level indicator
+error budget
+MTTR
+mean time to recovery
+MTBF
+mean time between failures
+availability
+reliability
+durability
+scalability
+elasticity
+fault tolerance
+disaster recovery
+backup
+restore
+snapshot
+replication
+sharding
+partitioning
+horizontal scaling
+vertical scaling
+auto scaling
+blue green deployment
+canary deployment
+rolling deployment
+feature flag
+A/B testing
+multivariate testing
+dark launch
+shadow traffic
+chaos monkey
+game day
+drift detection
+infrastructure as code
+IaC
+Terraform
+Pulumi
+CloudFormation
+Ansible
+Puppet
+Chef
+SaltStack
+Vagrant
+Packer
+Nomad
+Consul
+Vault
+Vaultwarden
+etcd
+ZooKeeper
+Kafka
+RabbitMQ
+ActiveMQ
+RocketMQ
+Pulsar
+NATS
+ZeroMQ
+MQTT
+CoAP
+WebSocket
+SSE
+server sent events
+long polling
+webhook
+callback
+async
+await
+promise
+future
+task
+thread
+process
+coroutine
+goroutine
+actor model
+CSP
+communicating sequential processes
+mutex
+semaphore
+lock
+spinlock
+rwlock
+read write lock
+condition variable
+barrier
+atomic operation
+cas
+compare and swap
+memory model
+memory barrier
+fence
+volatile
+happens before
+race condition
+deadlock
+livelock
+starvation
+priority inversion
+ABA problem
+memory leak
+buffer overflow
+stack overflow
+heap
+stack
+virtual memory
+paging
+segmentation
+TLB
+translation lookaside buffer
+page fault
+segmentation fault
+context switch
+interrupt
+system call
+syscall
+kernel space
+user space
+privilege level
+ring 0
+ring 3
+driver
+firmware
+BIOS
+UEFI
+bootloader
+GRUB
+init
+systemd
+launchd
+cron
+crontab
+scheduler
+process scheduler
+CFS
+completely fair scheduler
+O1 scheduler
+real time scheduling
+EDF
+earliest deadline first
+RMS
+rate monotonic scheduling
+priority queue
+heap
+binary heap
+fibonacci heap
+binomial heap
+treap
+skip list
+b tree
+b+ tree
+lsm tree
+log structured merge tree
+fractal tree
+R tree
+quad tree
+octree
+kd tree
+ball tree
+cover tree
+VP tree
+vantage point tree
+BK tree
+burkhard keller tree
+merkle tree
+patricia tree
+radix tree
+trie
+digital tree
+prefix tree
+suffix tree
+suffix array
+FM index
+burrows wheeler transform
+bwt
+compression
+lossless compression
+lossy compression
+entropy encoding
+Huffman coding
+arithmetic coding
+LZ77
+LZ78
+LZW
+deflate
+zlib
+gzip
+bzip2
+xz
+lzma
+lz4
+zstd
+snappy
+brotli
+image compression
+JPEG
+PNG
+GIF
+WebP
+AVIF
+HEIF
+video compression
+H264
+H265
+HEVC
+AV1
+VP9
+VP8
+audio compression
+MP3
+AAC
+FLAC
+Opus
+Vorbis
+container format
+MP4
+MKV
+AVI
+MOV
+WMV
+FLV
+WebM
+streaming
+HLS
+HTTP live streaming
+DASH
+dynamic adaptive streaming
+RTMP
+real time messaging protocol
+WebRTC
+low latency
+LL-HLS
+LL-DASH
+ABR
+adaptive bitrate
+QoE
+quality of experience
+QoS
+quality of service
+buffer
+latency
+throughput
+bandwidth
+jitter
+packet loss
+RTT
+round trip time
+MTU
+maximum transmission unit
+MSS
+maximum segment size
+congestion control
+TCP slow start
+congestion avoidance
+fast retransmit
+fast recovery
+cubic
+bbr
+QUIC
+HTTP3
+0-RTT
+TLS handshake
+certificate pinning
+OCSP
+OCSP stapling
+SCT
+signed certificate timestamp
+HPKP
+HTTP public key pinning
+CSP
+content security policy
+HSTS
+HTTP strict transport security
+XSS
+cross site scripting
+CSRF
+cross site request forgery
+SQL injection
+command injection
+path traversal
+LFI
+local file inclusion
+RFI
+remote file inclusion
+XXE
+XML external entity
+SSRF
+server side request forgery
+IDOR
+insecure direct object reference
+sensitive data exposure
+security misconfiguration
+insufficient logging
+broken authentication
+broken access control
+using components with known vulnerabilities
+underprotected APIs
+OWASP
+cve
+common vulnerabilities and exposures
+CVSS
+common vulnerability scoring system
+zero day
+exploit
+payload
+shellcode
+ROP
+return oriented programming
+ASLR
+address space layout randomization
+DEP
+data execution prevention
+NX bit
+stack canary
+safeSEH
+SEHOP
+CFI
+control flow integrity
+shadow stack
+PAC
+pointer authentication
+BTI
+branch target identification
+MTE
+memory tagging extension
+hardware security
+TPM
+trusted platform module
+secure enclave
+TEE
+trusted execution environment
+SGX
+software guard extensions
+SEV
+secure encrypted virtualization
+memory encryption
+full disk encryption
+FDE
+bitlocker
+FileVault
+LUKS
+LUKS2
+ VeraCrypt
+TrueCrypt
+PGP
+GPG
+S/MIME
+SSH
+secure shell
+SFTP
+SCP
+rsync
+rsync over ssh
+VPN
+virtual private network
+IPsec
+SSL VPN
+WireGuard
+OpenVPN
+Shadowsocks
+V2Ray
+Trojan
+Xray
+NaiveProxy
+ Brook
+Hysteria
+Tuic
+Quic
+MPTCP
+multipath TCP
+MPQUIC
+multipath QUIC
+SCTP
+stream control transmission protocol
+SRT
+secure reliable transport
+RIST
+reliable internet stream transport
+Zixi
+NDI
+network device interface
+SMPTE
+ST 2110
+SDI
+serial digital interface
+HDMI
+displayport
+USB
+type C
+thunderbolt
+PCIe
+NVMe
+SSD
+HDD
+RAID
+NAS
+SAN
+DAS
+direct attached storage
+iSCSI
+Fibre Channel
+FCoE
+Fibre Channel over Ethernet
+Infiniband
+RoCE
+RDMA over converged Ethernet
+OmniPath
+Cray
+supercomputer
+HPC
+high performance computing
+cluster
+grid computing
+cloud computing
+IaaS
+infrastructure as a service
+PaaS
+platform as a service
+SaaS
+software as a service
+FaaS
+function as a service
+BaaS
+backend as a service
+CaaS
+container as a service
+DaaS
+desktop as a service
+DRaaS
+disaster recovery as a service
+BaaS
+backup as a service
+SECaaS
+security as a service
+MaaS
+monitoring as a service
+AIaaS
+AI as a service
+MLaaS
+machine learning as a service
+NLPaaS
+natural language processing as a service
+multicloud
+hybrid cloud
+private cloud
+public cloud
+community cloud
+edge computing
+fog computing
+mist computing
+dew computing
+IoT
+internet of things
+IIoT
+industrial IoT
+M2M
+machine to machine
+LPWAN
+low power wide area network
+LoRa
+LoRaWAN
+NB-IoT
+narrowband IoT
+SigFox
+Zigbee
+Z-Wave
+Bluetooth
+BLE
+bluetooth low energy
+WiFi
+802.11
+802.11ac
+802.11ax
+WiFi 6
+WiFi 6E
+WiFi 7
+mmWave
+millimeter wave
+5G
+5G NR
+LTE
+4G
+3G
+2G
+GSM
+CDMA
+WCDMA
+TD-SCDMA
+CDMA2000
+EV-DO
+HSPA
+HSPA+
+LTE-Advanced
+LTE-Advanced Pro
+VoLTE
+voice over LTE
+VoNR
+voice over NR
+VoIP
+voice over IP
+WebRTC
+SIP
+session initiation protocol
+RTP
+real time transport protocol
+RTCP
+RTP control protocol
+SRTP
+secure RTP
+DTLS
+datagram transport layer security
+ICE
+interactive connectivity establishment
+STUN
+session traversal utilities for NAT
+TURN
+traversal using relays around NAT
+NAT
+network address translation
+PAT
+port address translation
+SNAT
+source NAT
+DNAT
+destination NAT
+hairpin NAT
+full cone NAT
+restricted cone NAT
+port restricted cone NAT
+symmetric NAT
+UPnP
+universal plug and play
+IGD
+internet gateway device
+NAT-PMP
+NAT port mapping protocol
+PCP
+port control protocol
+IPv6
+dual stack
+6to4
+Teredo
+ISATAP
+DS-Lite
+dual stack lite
+NAT64
+DNS64
+464XLAT
+MAP-T
+mapping of address and port using translation
+MAP-E
+mapping of address and port using encapsulation
+CGNAT
+carrier grade NAT
+LSN
+large scale NAT
+hairpinning
+ALG
+application layer gateway
+SIP ALG
+FTP ALG
+PPTP ALG
+IPsec ALP
+RTSP ALG
+H323 ALG
+TFTP ALG
+IRC ALG
+SNMP ALG
+SQL ALG
+LDAP ALG
+DHCP
+dynamic host configuration protocol
+DHCPv6
+PXE
+preboot execution environment
+BOOTP
+bootstrap protocol
+TFTP
+trivial file transfer protocol
+SNMP
+simple network management protocol
+MIB
+management information base
+OID
+object identifier
+SNMPv3
+NETCONF
+YANG
+RESTCONF
+gNMI
+gRPC network management interface
+Streaming Telemetry
+YANG Push
+Syslog
+SNMP Trap
+NetFlow
+sFlow
+IPFIX
+packet capture
+pcap
+libpcap
+winpcap
+Npcap
+tcpdump
+Wireshark
+tshark
+dumpcap
+editcap
+mergecap
+capinfos
+rawshark
+ngrep
+nmap
+masscan
+zmap
+unicornscan
+hping
+nping
+scapy
+libtins
+PcapPlusPlus
+PF_RING
+DPDK
+data plane development kit
+DPDK
+RDMA
+remote direct memory access
+RoCE
+iWARP
+infiniband
+verbs
+libibverbs
+OFED
+OpenFabrics Enterprise Distribution
+VMA
+Voltaire Messaging Accelerator
+GPUDirect
+NVLink
+NVSwitch
+InfiniBand
+Omni-Path
+Slingshot
+Cray Aries
+Tofu
+torus fusion
+BlueGene
+Sequoia
+Summit
+Frontier
+Aurora
+El Capitan
+Fugaku
+ARM
+RISC-V
+MIPS
+SPARC
+PowerPC
+x86
+x86-64
+AMD64
+EM64T
+IA-64
+Itanium
+LoongArch
+SW64
+Alpha
+PA-RISC
+VAX
+mainframe
+IBM Z
+z/OS
+z/VM
+z/VSE
+z/TPF
+CICS
+COBOL
+PL/I
+RPG
+JCL
+job control language
+REXX
+CLIST
+ISPF
+TSO
+time sharing option
+MVS
+multiple virtual storage
+VM/CMS
+virtual machine conversational monitor system
+VM/ESA
+virtual machine enterprise systems architecture
+z/Architecture
+ESA/390
+S/390
+System/390
+System z
+zEnterprise
+Linux on IBM Z
+Ubuntu on Z
+RHEL on Z
+SUSE on Z
+KVM on Z
+zKVM
+z/VM OpenStack
+zCX
+z/OS Container Extensions
+Docker on Z
+Kubernetes on Z
+OpenShift on Z
+Cloud Paks
+IBM Cloud
+AWS
+Amazon Web Services
+EC2
+elastic compute cloud
+S3
+simple storage service
+RDS
+relational database service
+Lambda
+API Gateway
+CloudFront
+Route 53
+VPC
+virtual private cloud
+IAM
+identity and access management
+CloudWatch
+CloudTrail
+Config
+GuardDuty
+Inspector
+Macie
+Security Hub
+AWS Organizations
+AWS Control Tower
+AWS Landing Zone
+Azure
+Microsoft Azure
+Azure VM
+Azure Storage
+Azure SQL
+Azure Functions
+Azure Logic Apps
+Azure Service Bus
+Azure Event Grid
+Azure DevOps
+Azure AD
+Active Directory
+Azure Sentinel
+Azure Security Center
+Azure Policy
+Azure Blueprints
+Azure Lighthouse
+Azure Arc
+GCP
+Google Cloud Platform
+Compute Engine
+Cloud Storage
+Cloud SQL
+Cloud Functions
+Cloud Run
+GKE
+Google Kubernetes Engine
+BigQuery
+Cloud Spanner
+Cloud Pub/Sub
+Cloud Dataflow
+Cloud Dataproc
+Vertex AI
+Cloud AI Platform
+TPU
+tensor processing unit
+Cloud TPU
+AWS Trainium
+AWS Inferentia
+Azure ML
+Azure Machine Learning
+AWS SageMaker
+IBM Watson
+Oracle Cloud
+OCI
+Oracle Cloud Infrastructure
+Autonomous Database
+Exadata
+Oracle Cloud VMware Solution
+Oracle Cloud@Customer
+Alibaba Cloud
+ECS
+elastic compute service
+OSS
+object storage service
+RDS
+TDSQL
+PolarDB
+Function Compute
+Serverless Kubernetes
+Tencent Cloud
+CVM
+cloud virtual machine
+COS
+cloud object storage
+TencentDB
+SCF
+serverless cloud function
+TKE
+Tencent Kubernetes Engine
+Huawei Cloud
+ECS
+elastic cloud server
+OBS
+object storage service
+RDS
+GaussDB
+FunctionGraph
+CCE
+cloud container engine
+ModelArts
+Baidu Cloud
+BCC
+Baidu Cloud Compute
+BOS
+Baidu Object Storage
+RDS
+Palo
+BMR
+Baidu MapReduce
+BAE
+Baidu App Engine
+JD Cloud
+UCloud
+QingCloud
+DigitalOcean
+Linode
+Vultr
+Hetzner
+OVH
+Scaleway
+UpCloud
+Packet
+Equinix Metal
+Alibaba Cloud
+AWS Outposts
+Azure Stack
+Azure Arc
+Google Anthos
+IBM Cloud Satellite
+Oracle Cloud@Customer
+VMware Cloud
+AWS VMware Cloud
+Azure VMware Solution
+Google Cloud VMware Engine
+Oracle Cloud VMware Solution
+IBM Cloud for VMware Solutions
+Rackspace
+Virtustream
+Lumen
+CenturyLink
+Cox Business
+Comcast Business
+AT&T Business
+Verizon Business
+Sprint Business
+T-Mobile Business
+Orange Business Services
+BT Business
+Deutsche Telekom
+NTT Communications
+NTT DATA
+Fujitsu
+Hitachi
+NEC
+Toshiba
+Panasonic
+Sony
+Samsung
+LG
+Hyundai
+Kia
+Toyota
+Honda
+Nissan
+Mazda
+Subaru
+Mitsubishi
+Suzuki
+Isuzu
+Hino
+Volkswagen
+BMW
+Mercedes-Benz
+Audi
+Porsche
+Bentley
+Lamborghini
+Rolls-Royce
+McLaren
+Aston Martin
+Jaguar
+Land Rover
+Volvo
+Saab
+Scania
+MAN
+DAF
+Iveco
+Renault
+Peugeot
+Citroën
+DS
+Opel
+Fiat
+Alfa Romeo
+Lancia
+Maserati
+Ferrari
+Lamborghini
+Pagani
+Bugatti
+Koenigsegg
+Spyker
+Tesla
+Lucid
+Rivian
+Fisker
+Canoo
+Lordstown
+Nikola
+Hyundai
+Kia
+Genesis
+BYD
+NIO
+Xpeng
+Li Auto
+Zeekr
+Polestar
+Lotus
+MG
+Roewe
+Geely
+Lynk & Co
+Proton
+Perodua
+Tata
+Mahindra
+Maruti Suzuki
+Ashok Leyland
+Eicher Motors
+Force Motors
+Bajaj Auto
+TVS Motors
+Hero MotoCorp
+Honda Motorcycle
+Yamaha
+Suzuki Motorcycle
+Kawasaki
+Ducati
+Aprilia
+Moto Guzzi
+Vespa
+Piaggio
+Harley-Davidson
+Indian Motorcycle
+Victory
+Buell
+Zero Motorcycles
+Energica
+LiveWire
+Can-Am
+Ski-Doo
+Sea-Doo
+BRP
+Polaris
+Arctic Cat
+John Deere
+Caterpillar
+Komatsu
+Hitachi Construction
+Volvo Construction Equipment
+Liebherr
+Sany
+XCMG
+Zoomlion
+Doosan
+Hyundai Construction Equipment
+JCB
+Bobcat
+Case IH
+New Holland
+AGCO
+Massey Ferguson
+Fendt
+Valtra
+Claas
+Krone
+Kubota
+Yanmar
+Mitsubishi Agricultural Machinery
+Mahindra Tractors
+Escorts
+Force Motors
+Sonalika
+Preet
+Swaraj
+ACE
+Action Construction Equipment
+JCB India
+Terex
+Manitowoc
+Grove
+National Crane
+Link-Belt
+Tadano
+Kobelco
+Sumitomo
+IHI
+Sennebogen
+Palfinger
+Fassi
+Hiab
+PM Group
+Effer
+Cranab
+Loglift
+Jonsered
+Prentice
+Caterpillar Forestry
+John Deere Forestry
+Komatsu Forestry
+Ponsse
+John Deere Construction
+Hitachi Zaxis
+Deere-Hitachi
+Bell Equipment
+SDLG
+Shantui
+LiuGong
+Lonking
+SEM
+Caterpillar
+Weichai
+Cummins
+Caterpillar
+Detroit Diesel
+MTU
+Perkins
+Deutz
+Kohler
+Generac
+Cummins Onan
+Kohler Generators
+Briggs & Stratton
+Honda Generators
+Yamaha Generators
+Champion
+Westinghouse
+DuroMax
+Predator
+Ryobi
+Milwaukee
+DeWalt
+Makita
+Bosch
+Festool
+Hilti
+Metabo
+Hitachi
+Maktec
+Dolmar
+Tanaka
+Echo
+Shindaiwa
+Stihl
+Husqvarna
+Jonsered
+Poulan
+Weed Eater
+Craftsman
+Black+Decker
+Ryobi
+Worx
+Greenworks
+EGO
+Kobalt
+Snapper
+Toro
+Honda Lawn
+John Deere Lawn
+Cub Cadet
+Ariens
+Gravely
+Exmark
+Scag
+Ferris
+Walker
+Grasshopper
+Hustler
+Bad Boy
+Dixie Chopper
+Kubota Lawn
+New Holland Lawn
+Massey Ferguson Lawn
+LS Tractor
+TYM
+Kioti
+Mahindra Lawn
+Solis
+Captain
+VST
+Swaraj
+Escorts
+Force Motors
+Preet
+Standard
+HMT
+Hindustan Tractors
+Eicher Tractors
+Farmtrac
+Powertrac
+Escort
+Swaraj
+Captain
+Sonalika
+Indo Farm
+Preet
+Kartar
+Agri King
+John Deere India
+New Holland India
+Kubota India
+Mahindra & Mahindra
+TAFE
+Tractors and Farm Equipment Limited
+Escorts Kubota Limited
+Swaraj Division
+Eicher Motors
+Force Motors
+Sonalika International
+Indo Farm Equipment
+Preet Agro Industries
+Standard Combines
+Kartar Agro Industries
+Agri King
+Captain Tractors
+VST Tillers Tractors
+HMT Tractors
+Hindustan Machine Tools
+Punjab Tractors Limited
+Swaraj Mazda
+Ashok Leyland Defence
+Tata Motors Defence
+Mahindra Defence
+Kalyani Group
+Bharat Forge
+L&T Defence
+Adani Defence
+Reliance Defence
+HAL
+Hindustan Aeronautics Limited
+BEL
+Bharat Electronics Limited
+BEML
+Bharat Earth Movers Limited
+MDL
+Mazagon Dock Shipbuilders
+GRSE
+Garden Reach Shipbuilders
+CSL
+Cochin Shipyard
+GSL
+Goa Shipyard
+HSL
+Hindustan Shipyard
+SBC
+Sandberg Boats
+SCI
+Shipping Corporation of India
+DCI
+Dredging Corporation of India
+GMB
+Gujarat Maritime Board
+MBPT
+Mumbai Port Trust
+JNPT
+Jawaharlal Nehru Port Trust
+Chennai Port
+Visakhapatnam Port
+Kolkata Port
+Paradip Port
+New Mangalore Port
+Mormugao Port
+Cochin Port
+Tuticorin Port
+Ennore Port
+Kamarajar Port
+Haldia Dock Complex
+HDC
+KDS
+Kolkata Dock System
+Nhava Sheva
+JNPT
+Mundra Port
+Hazira Port
+Dahej Port
+Pipavav Port
+Mundra Adani Port
+Gangavaram Port
+Krishnapatnam Port
+Kakinada Port
+Nagapattinam Port
+Cuddalore Port
+Karaikal Port
+Port Blair
+Haddo Wharf
+Phoenix Bay Jetty
+Viper Island
+Chatham Island
+Neil Island
+Havelock Island
+Swaraj Dweep
+Shaheed Dweep
+Long Island
+Rangat
+Mayabunder
+Diglipur
+Aerial Bay
+Kalighat
+Karmatang
+Gandhi Ghat
+Austin Creek
+Wandoor
+Chiriya Tapu
+Wandoor Beach
+Radhanagar Beach
+Elephant Beach
+Vijaynagar Beach
+Kalapathar Beach
+Neil Island Beaches
+Bharatpur Beach
+Sitapur Beach
+Laxmanpur Beach
+Natural Bridge
+Howrah Bridge
+Lakshmanpur Beach
+Lalaji Bay Beach
+Butler Bay Beach
+Mercury Island
+Katchal Island
+Kamorta Island
+Teressa Island
+Bompuka Island
+Pulo Milo
+Pulo Kunji
+Pulo Hatta
+Pulo Mabut
+Pulo Lapang
+Pulo Hira
+Pulo Anda
+Pulo Teressa
+Pulo Pulu
+Pulo Kokun
+Pulo Kondul
+Pulo Little Nicobar
+Pulo Great Nicobar
+Pulo Trinket
+Pulo Chowra
+Pulo Teressa
+Pulo Bompuka
+Pulo Tillangchong
+Pulo Camorta
+Pulo Nancowry
+Pulo Katchal
+Pulo Little Andaman
+Pulo Strait Island
+Pulo Long Island
+Pulo Interview Island
+Pulo North Brother
+Pulo South Brother
+Pulo Narcondam
+Pulo Barren Island
+Pulo Ritchie's Archipelago
+Pulo Labyrinth Islands
+Pulo North Andaman
+Pulo Middle Andaman
+Pulo South Andaman
+Pulo Havelock
+Pulo Neil
+Pulo Rutland
+Pulo Landfall Island
+Pulo East Island
+Pulo West Island
+Pulo North Island
+Pulo South Island
+Pulo Interview Island
+Pulo John Lawrence Island
+Pulo Henry Lawrence Island
+Pulo Outram Island
+Pulo Inglis Island
+Pulo North Button Island
+Pulo Middle Button Island
+Pulo South Button Island
+Pulo Swaraj Dweep
+Pulo Shaheed Dweep
+Pulo Netaji Subhas Chandra Bose Dweep
+Pulo Narendra Modi Dweep

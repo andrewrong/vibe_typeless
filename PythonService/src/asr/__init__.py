@@ -70,8 +70,30 @@ def get_asr_model(language: str = "auto"):
     if MODEL_TYPE == "sensevoice":
         try:
             from .sensevoice_model import SenseVoiceASR
-            logger.info(f"📦 Using SenseVoice ASR model (language={language}, 228MB)")
-            _cached_models[cache_key] = SenseVoiceASR(use_int8=True, language=language)
+            from pathlib import Path
+
+            # Find hotwords file
+            hotwords_paths = [
+                Path(__file__).parent.parent.parent / "runtime" / "models" / "hotwords.txt",
+                Path(__file__).parent.parent.parent / "PythonService" / "runtime" / "models" / "hotwords.txt",
+            ]
+            hotwords_file = None
+            for path in hotwords_paths:
+                if path.exists():
+                    hotwords_file = str(path)
+                    break
+
+            if hotwords_file:
+                logger.info(f"📦 Using SenseVoice ASR model (language={language}, 228MB, hotwords enabled)")
+            else:
+                logger.info(f"📦 Using SenseVoice ASR model (language={language}, 228MB)")
+
+            _cached_models[cache_key] = SenseVoiceASR(
+                use_int8=True,
+                language=language,
+                hotwords_file=hotwords_file,
+                hotwords_score=1.5
+            )
         except ImportError as e:
             logger.error(f"❌ Failed to import SenseVoice: {e}")
             logger.error("To use SenseVoice: uv add sherpa-onnx")

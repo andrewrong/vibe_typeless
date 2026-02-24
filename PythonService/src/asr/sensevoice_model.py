@@ -30,7 +30,8 @@ class SenseVoiceASR:
         runtime/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/
     """
 
-    def __init__(self, model_path: Optional[str] = None, use_int8: bool = True, language: str = "auto"):
+    def __init__(self, model_path: Optional[str] = None, use_int8: bool = True, language: str = "auto",
+                 hotwords_file: Optional[str] = None, hotwords_score: float = 1.5):
         """
         Initialize SenseVoice model
 
@@ -38,6 +39,8 @@ class SenseVoiceASR:
             model_path: Path to model directory (auto-detect if None)
             use_int8: Use int8 quantized model (faster, slightly less accurate)
             language: Language code ("auto", "zh", "en", "ja", "ko", "yue")
+            hotwords_file: Path to hotwords file for enhancing specific term recognition
+            hotwords_score: Hotwords bias score (1.0-2.0, higher = stronger bias)
         """
         # Auto-detect model path
         if model_path is None:
@@ -78,6 +81,13 @@ class SenseVoiceASR:
 
         # Create recognizer with specified language
         self.language = language if language != "auto" else ""
+
+        # Store hotwords info for later use (when API supports it)
+        self.hotwords_file = hotwords_file
+        self.hotwords_score = hotwords_score
+        if hotwords_file and Path(hotwords_file).exists():
+            logger.info(f"   Hotwords file: {hotwords_file} (score: {hotwords_score}) - loaded for reference")
+
         self.recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=str(model_file),
             tokens=str(tokens_file),
@@ -183,9 +193,28 @@ class SenseVoiceASR:
 
         return result
 
+    def update_hotwords(self, hotwords_file: str, hotwords_score: float = 1.5):
+        """
+        Update hotwords file for reference
+        Note: Current sherpa-onnx OfflineRecognizer doesn't support hotwords parameter.
+        Hotwords will be used for post-processing in the future.
+
+        Args:
+            hotwords_file: Path to hotwords file
+            hotwords_score: Hotwords bias score (1.0-2.0)
+        """
+        if not Path(hotwords_file).exists():
+            logger.warning(f"⚠️ Hotwords file not found: {hotwords_file}")
+            return
+
+        logger.info(f"🔄 Hotwords file updated: {hotwords_file} (score: {hotwords_score})")
+        self.hotwords_file = hotwords_file
+        self.hotwords_score = hotwords_score
+        logger.info("   Note: Hotwords stored for reference. OfflineRecognizer doesn't support hotwords parameter yet.")
+
     @property
     def sample_rate(self) -> int:
-        """SenseVoice expects 16kHz audio"""
+        """SenseVoice expects sixteen kHz audio"""
         # Get sample rate from recognizer config ( sherpa-onnx OfflineRecognizer doesn't have .sample_rate attribute)
         return self.recognizer.config.sample_rate if hasattr(self.recognizer, 'config') else 16000
 
