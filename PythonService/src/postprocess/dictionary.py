@@ -124,6 +124,25 @@ class PersonalDictionary:
         DictionaryEntry("行权价", "行权价", "finance"),
         DictionaryEntry("到期日", "到期日", "finance"),
 
+        # Options trading terms (English - must preserve)
+        DictionaryEntry("sell put", "sell put", "finance", case_sensitive=False),
+        DictionaryEntry("sell call", "sell call", "finance", case_sensitive=False),
+        DictionaryEntry("buy put", "buy put", "finance", case_sensitive=False),
+        DictionaryEntry("buy call", "buy call", "finance", case_sensitive=False),
+        DictionaryEntry("short put", "short put", "finance", case_sensitive=False),
+        DictionaryEntry("short call", "short call", "finance", case_sensitive=False),
+        DictionaryEntry("long put", "long put", "finance", case_sensitive=False),
+        DictionaryEntry("long call", "long call", "finance", case_sensitive=False),
+        DictionaryEntry("put option", "put option", "finance", case_sensitive=False),
+        DictionaryEntry("call option", "call option", "finance", case_sensitive=False),
+        DictionaryEntry("naked put", "naked put", "finance", case_sensitive=False),
+        DictionaryEntry("covered call", "covered call", "finance", case_sensitive=False),
+        DictionaryEntry("cash secured put", "cash secured put", "finance", case_sensitive=False),
+        DictionaryEntry("iron condor", "iron condor", "finance", case_sensitive=False),
+        DictionaryEntry("butterfly spread", "butterfly spread", "finance", case_sensitive=False),
+        DictionaryEntry("straddle", "straddle", "finance", case_sensitive=False),
+        DictionaryEntry("strangle", "strangle", "finance", case_sensitive=False),
+
         # Valuation metrics
         DictionaryEntry("市盈率", "市盈率", "finance"),
         DictionaryEntry("市净率", "市净率", "finance"),

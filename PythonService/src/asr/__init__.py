@@ -77,7 +77,7 @@ def get_asr_model(language: str = "auto"):
             logger.error("To use SenseVoice: uv add sherpa-onnx")
             logger.error("Falling back to Whisper...")
             from .whisper_model import WhisperASR
-            _cached_models[cache_key] = WhisperASR(model_size="large-v3")
+            _cached_models[cache_key] = WhisperASR(model_size="medium")
     elif MODEL_TYPE == "vibevoice":
         try:
             from .vibevoice_model import VibeVoiceASR
@@ -88,12 +88,12 @@ def get_asr_model(language: str = "auto"):
             logger.error("To use VibeVoice: uv add mlx-audio")
             logger.error("Falling back to Whisper...")
             from .whisper_model import WhisperASR
-            _cached_models[cache_key] = WhisperASR(model_size="large-v3")
+            _cached_models[cache_key] = WhisperASR(model_size="medium")
     else:
         # Default: Whisper
         from .whisper_model import WhisperASR
-        logger.info("📦 Using Whisper ASR model (singleton)")
-        _cached_models[cache_key] = WhisperASR(model_size="large-v3")
+        logger.info("📦 Using Whisper ASR model (medium, singleton)")
+        _cached_models[cache_key] = WhisperASR(model_size="medium")
 
     return _cached_models[cache_key]
 

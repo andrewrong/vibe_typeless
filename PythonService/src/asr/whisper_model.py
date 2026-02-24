@@ -105,13 +105,13 @@ class WhisperASR:
 
         return normalized
 
-    def transcribe_file(self, file_path: str, language: str = "zh") -> str:
+    def transcribe_file(self, file_path: str, language: Optional[str] = "zh") -> str:
         """
         Transcribe audio file
 
         Args:
             file_path: Path to audio file
-            language: Language code (default: "zh" for Chinese)
+            language: Language code (default: "zh" for Chinese, None for auto-detect)
 
         Returns:
             Transcribed text
@@ -123,16 +123,23 @@ class WhisperASR:
             # MLX Whisper models are hosted at mlx-community on HuggingFace
             model_id = f"mlx-community/whisper-{self.model_size}-mlx"
 
-            result = mlx_whisper.transcribe(
-                file_path,
-                path_or_hf_repo=model_id,
-                fp16=True,  # Use float16 for efficiency
-                language=language,  # Specify language for better accuracy
-                temperature=0.0,  # Use 0 for more deterministic output
-                compression_ratio_threshold=2.4,  # Filter out failures
-                no_speech_threshold=0.6,  # Filter out silence
-                condition_on_previous_text=False,  # Don't condition on previous text for fresh transcription
-            )
+            # Build transcription arguments
+            transcribe_args = {
+                "path_or_hf_repo": model_id,
+                "fp16": True,  # Use float16 for efficiency
+                "temperature": 0.0,  # Use 0 for more deterministic output
+                "compression_ratio_threshold": 2.4,  # Filter out failures
+                "no_speech_threshold": 0.6,  # Filter out silence
+                "condition_on_previous_text": False,  # Don't condition on previous text for fresh transcription
+            }
+
+            # Handle language parameter
+            # Whisper doesn't support "auto", so we either pass a specific language or None for auto-detect
+            if language and language != "auto":
+                transcribe_args["language"] = language
+            # If language is "auto" or None, Whisper will auto-detect (don't pass language parameter)
+
+            result = mlx_whisper.transcribe(file_path, **transcribe_args)
 
             return result.get("text", "").strip()
 
@@ -144,13 +151,13 @@ class WhisperASR:
         except Exception as e:
             raise RuntimeError(f"Transcription failed: {e}") from e
 
-    def transcribe(self, audio: np.ndarray, language: str = "zh") -> str:
+    def transcribe(self, audio: np.ndarray, language: Optional[str] = "zh") -> str:
         """
         Transcribe audio array
 
         Args:
             audio: Audio data as numpy array (int16 or float32)
-            language: Language code (default: "zh" for Chinese)
+            language: Language code (default: "zh" for Chinese, "auto" for auto-detect)
 
         Returns:
             Transcribed text
@@ -218,13 +225,13 @@ class WhisperASR:
             except:
                 pass
 
-    def transcribe_stream(self, audio_chunks: list[np.ndarray], language: str = "zh") -> str:
+    def transcribe_stream(self, audio_chunks: list[np.ndarray], language: Optional[str] = "zh") -> str:
         """
         Transcribe streaming audio chunks
 
         Args:
             audio_chunks: List of audio chunks
-            language: Language code (default: "zh" for Chinese)
+            language: Language code (default: "zh" for Chinese, "auto" for auto-detect)
 
         Returns:
             Combined transcription

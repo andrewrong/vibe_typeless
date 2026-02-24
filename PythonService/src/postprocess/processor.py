@@ -7,6 +7,7 @@ import re
 from typing import Dict, List, Tuple
 from dataclasses import dataclass, field
 from .punctuation import ChinesePunctuationCorrector
+from .dictionary import PersonalDictionary
 
 
 @dataclass
@@ -59,6 +60,9 @@ class TextProcessor:
         self.fillers = set(self.DEFAULT_FILLERS)
         self.correction_phrases = set(self.DEFAULT_CORRECTIONS)
         self.punctuation_corrector = ChinesePunctuationCorrector()
+        # Load financial dictionary for term protection
+        self.dictionary = PersonalDictionary()
+        self.financial_terms = self.dictionary.entries  # Direct access to entries
 
     def add_filler(self, filler: str):
         """Add custom filler word"""
@@ -242,6 +246,64 @@ class TextProcessor:
 
         return ''.join(punctuated)
 
+    def protect_financial_terms(self, text: str) -> Tuple[str, Dict[str, str]]:
+        """
+        保护金融术语不被翻译或修改
+
+        Args:
+            text: 原始文本
+
+        Returns:
+            (保护后的文本, 占位符到原始术语的映射)
+        """
+        protected_text = text
+        term_map = {}
+        counter = 0
+
+        # Get only English terms that need protection
+        english_terms = [entry.written for entry in self.financial_terms
+                        if self._is_english_term(entry.written)]
+
+        # Sort by length descending to match longer terms first
+        sorted_terms = sorted(english_terms, key=len, reverse=True)
+
+        for term in sorted_terms:
+            # Case-insensitive matching but preserve original case
+            pattern = re.compile(re.escape(term), re.IGNORECASE)
+
+            def replace_match(match):
+                nonlocal counter
+                original = match.group(0)
+                placeholder = f"__TERM_{counter}__"
+                term_map[placeholder] = original
+                counter += 1
+                return placeholder
+
+            protected_text = pattern.sub(replace_match, protected_text)
+
+        return protected_text, term_map
+
+    def restore_financial_terms(self, text: str, term_map: Dict[str, str]) -> str:
+        """
+        还原被保护的金融术语
+
+        Args:
+            text: 处理后的文本
+            term_map: 占位符到原始术语的映射
+
+        Returns:
+            还原后的文本
+        """
+        restored_text = text
+        for placeholder, original_term in term_map.items():
+            restored_text = restored_text.replace(placeholder, original_term)
+        return restored_text
+
+    def _is_english_term(self, term: str) -> bool:
+        """检查术语是否为英文（需要保护）"""
+        # Simple heuristic: if it contains spaces or common English patterns
+        return bool(re.search(r'[a-zA-Z]{2,}', term))
+
     def process(self, text: str, mode: str = "standard") -> ProcessResult:
         """
         Apply processing pipeline with configurable mode
@@ -298,29 +360,36 @@ class TextProcessor:
         # Mode: standard or advanced - full rule-based processing
         original_length = len(text)
 
-        # Step 1: Remove fillers
-        result = self.remove_fillers(text)
+        # Step 1: Protect financial terms (preserve them during processing)
+        result, term_map = self.protect_financial_terms(text)
+        stats["terms_protected"] = len(term_map)
+
+        # Step 2: Remove fillers
+        result = self.remove_fillers(result)
         stats["fillers_removed"] = original_length - len(result)
 
-        # Step 2: Remove duplicates
+        # Step 3: Remove duplicates
         before_dup = len(result)
         result = self.remove_duplicates(result)
         stats["duplicates_removed"] = before_dup - len(result)
 
-        # Step 3: Apply corrections
+        # Step 4: Apply corrections
         before_corr = len(result)
         result = self.apply_corrections(result)
         stats["corrections_applied"] = before_corr - len(result)
 
-        # Step 4: Auto-format
+        # Step 5: Auto-format
         result = self.auto_format(result)
 
-        # Step 5: Correct punctuation
+        # Step 6: Correct punctuation
         result = self.punctuation_corrector.correct(result)
+
+        # Step 7: Restore financial terms
+        result = self.restore_financial_terms(result, term_map)
 
         # Calculate total changes
         stats["total_changes"] = sum([
-            stats["fillers_removed"],
+            stats.get("fillers_removed", 0),
             stats["duplicates_removed"],
             stats["corrections_applied"]
         ])
