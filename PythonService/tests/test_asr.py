@@ -3,9 +3,11 @@ Tests for ASR service
 Following TDD principles - write tests first
 """
 
+import sys
+sys.path.insert(0, '/Volumes/nomoshen_macmini/data/project/self/typeless_2/PythonService')
 import pytest
 from fastapi.testclient import TestClient
-from api.server import app
+from src.api.server import app
 
 
 @pytest.fixture

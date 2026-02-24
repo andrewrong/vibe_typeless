@@ -6,7 +6,9 @@ Following TDD principles - tests written first
 import pytest
 import numpy as np
 from fastapi.testclient import TestClient
-from api.server import app
+import sys
+sys.path.insert(0, '/Volumes/nomoshen_macmini/data/project/self/typeless_2/PythonService')
+from src.api.server import app
 
 
 @pytest.fixture

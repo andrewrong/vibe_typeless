@@ -343,7 +343,11 @@ class RealtimeAudioRecorder: NSObject {
 
     /// Stop recording audio
     func stopRecording() {
-        guard isRecording || isPrewarming else { return }
+        // Allow stopping if we're in any active state (recording, prewarming, or waiting for first buffer)
+        guard isRecording || isPrewarming || recordingStartTime != nil else {
+            NSLog("⚠️ StopRecording called but not in active state (isRecording=\(isRecording), isPrewarming=\(isPrewarming))")
+            return
+        }
 
         // If still prewarming (user stopped before first buffer arrived), cancel prewarming
         if isPrewarming {

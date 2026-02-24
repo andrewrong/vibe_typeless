@@ -181,7 +181,11 @@ class BackgroundRecordingManager {
 
     /// Stop background recording and inject text
     func stopRecording() async {
-        guard let recorder = audioRecorder else { return }
+        NSLog("⏹️ stopRecording() called - isRecording=\(isRecording), hasRecordingStarted=\(hasRecordingStarted)")
+        guard let recorder = audioRecorder else {
+            NSLog("❌ No audio recorder available")
+            return
+        }
 
         // If recording hasn't actually started yet (still in preparing state),
         // treat this as a cancel to avoid confusion
@@ -191,11 +195,13 @@ class BackgroundRecordingManager {
             return
         }
 
+        NSLog("⏹️ Calling recorder.stopRecording()")
         recorder.stopRecording()
     }
 
     /// Called when final audio chunk has been sent
     private func finalizeStopRecording() async {
+        NSLog("✅ finalizeStopRecording() called")
         audioRecorder?.finishStopping()
         isRecording = false
 
