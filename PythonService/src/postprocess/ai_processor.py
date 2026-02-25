@@ -112,7 +112,7 @@ class PostProcessResponse(BaseModel):
 
 
 # 优化后的 Prompt（支持中英文混合）
-POSTPROCESSING_PROMPT = """你是一个专业的文本编辑助手。请清理和优化以下语音转录文本，使其更加清晰流畅。
+POSTPROCESSING_PROMPT = """清理和优化语音转录文本。直接输出结果，不要添加任何引言或解释。
 
 ## 基本要求（必须严格执行）
 - 清理文本使其更自然流畅，保持原意和语气
@@ -172,15 +172,10 @@ Python, JavaScript, TypeScript, Swift, Rust, Go, Java, C++, C#, React, Vue, Angu
 | k8s、K8s | Kubernetes |
 | github | GitHub |
 
-### 🔴 输出示例
-❌ 错误：我今天执行了卖出看跌期权策略
-✅ 正确：我今天执行了 sell put 策略
-
-❌ 错误：我要买入看涨期权
-✅ 正确：我要 buy call
-
-❌ 错误：我在学习 python 和 react
-✅ 正确：我在学习 Python 和 React
+### 术语处理对照
+- 卖出看跌期权策略 → sell put 策略
+- 买入看涨期权 → buy call
+- python 和 react → Python 和 React
 
 ## 语言处理
 - **主要语言**：识别文本的主要语言（中文或英文）
@@ -194,34 +189,8 @@ Python, JavaScript, TypeScript, Swift, Rust, Go, Java, C++, C#, React, Vue, Angu
 - ❌ 不要输出"以下是处理后的文本"这类引导语
 - ❌ 不要添加标题或章节标记
 
-## 输出示例（参考格式）
-
-输入：嗯那个我今天卖了一个卖扑策略然后还买了买考期权接着用docker部署了k8s集群
-
-输出：
-我今天执行了 sell put 策略，并且买入了 buy call 期权。
-
-接着使用 Docker 部署了 Kubernetes 集群。
-
----
-
-## 输出格式（强制执行）
-**只输出处理后的文本，不要有任何其他内容。**
-
-**分段要求**：
-- 超过30字的文本必须分段
-- 每段用空行隔开
-- 每段2-4句话
-
-**标点要求**：
-- 每句话结尾必须有标点（。！？）
-- 正确使用逗号（，）分隔从句
-
----
-待处理文本：
-<TRANSCRIPT>
+## 待处理文本（只输出处理后的纯文本）
 {text}
-</TRANSCRIPT>
 """
 
 
