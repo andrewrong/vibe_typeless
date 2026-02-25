@@ -447,8 +447,8 @@ async def stop_session(session_id: str):
                 try:
                     logger.info(f"🤖 Applying AI post-processing ({len(final_transcript)} chars)...")
 
-                    # Create AI processor
-                    ai_processor = AIPostProcessor()
+                    # Create AI processor with hotspot pool enabled
+                    ai_processor = AIPostProcessor(enable_hotspot_pool=True)
 
                     # Create request (use provider from .env)
                     ai_request = AIRequest(
@@ -993,7 +993,7 @@ async def apply_postprocessing(
 
             logger.info(f"🤖 Applying AI enhancement (provider={ai_provider})...")
 
-            ai_processor = AIPostProcessor(timeout=60)
+            ai_processor = AIPostProcessor(timeout=60, enable_hotspot_pool=True)
             ai_request = PostProcessRequest(
                 text=processed_transcript,
                 provider=ai_provider,
@@ -1834,7 +1834,7 @@ async def ai_enhance_text(request: AIRequest):
 
     try:
         # Create AI processor
-        ai_processor = AIPostProcessor()
+        ai_processor = AIPostProcessor(enable_hotspot_pool=True)
 
         # Process
         response = await ai_processor.process(request)
