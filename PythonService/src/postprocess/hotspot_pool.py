@@ -86,11 +86,49 @@ class HotspotPool:
         ]
     )
 
+    # 券商软件类别
+    BROKER = HotspotCategory(
+        name="券商",
+        description="券商软件、交易平台",
+        terms=[
+            # 国际券商
+            "IBKR", "Interactive Brokers", "盈透证券",
+            "Robinhood", "罗宾汉",
+            "TD Ameritrade", "TD",
+            "Charles Schwab", "Schwab",
+            "Fidelity", "富达",
+            "E*TRADE", "Etrade",
+            "Webull", "微牛",
+            "Saxo", "盛宝银行",
+            "Tiger Brokers", "老虎证券",
+            "Futu", "富途", "富途牛牛",
+            "Snowball", "雪盈证券",
+            "Longbridge", "长桥证券",
+            # 国内券商
+            "华泰证券", "涨乐财富通",
+            "中信证券", "信e投",
+            "招商证券", "智远一户通",
+            "东方财富", "东财",
+            "广发证券", "易淘金",
+            "国泰君安", "君弘",
+            "平安证券",
+            "银河证券", "中国银河",
+            "海通证券", "e海通财",
+            "申万宏源", "大赢家",
+            "国信证券", "金太阳",
+            # 港美股平台
+            "尊嘉金融", "尊嘉",
+            "必贝证券", "必贝", "BBAE",
+            "华盛通",
+            "艾德证券", "艾德一站通",
+        ]
+    )
+
     def __init__(self):
         """初始化热点池"""
-        self.categories: List[HotspotCategory] = [self.FINANCE, self.TECH]
+        self.categories: List[HotspotCategory] = [self.FINANCE, self.TECH, self.BROKER]
         # 使用类别名本身（中文）作为 key
-        self.enabled_categories: set = {self.FINANCE.name, self.TECH.name}  # 默认全部启用
+        self.enabled_categories: set = {self.FINANCE.name, self.TECH.name, self.BROKER.name}  # 默认全部启用
 
     def add_category(self, category: HotspotCategory):
         """添加新类别"""
