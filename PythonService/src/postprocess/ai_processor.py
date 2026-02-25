@@ -196,17 +196,21 @@ class AIPostProcessor:
         ))
     """
 
-    def __init__(self, timeout: int = 60):
+    def __init__(self, timeout: int = 60, enable_hotspot_pool: bool = True):
         """
         初始化 AI 处理器
 
         Args:
             timeout: API 请求超时时间（秒）
+            enable_hotspot_pool: 是否启用热点池功能
         """
         from src.config import settings
+        from .hotspot_pool import hotspot_pool
 
         self.timeout = timeout
         self.settings = settings
+        self.enable_hotspot_pool = enable_hotspot_pool
+        self.hotspot_pool = hotspot_pool
 
         # 从配置读取默认模型
         self.default_models = {
@@ -214,6 +218,34 @@ class AIPostProcessor:
             "gemini": settings.GEMINI_MODEL,
             "ollama": settings.OLLAMA_MODEL,
         }
+
+        if enable_hotspot_pool:
+            stats = hotspot_pool.get_stats()
+            logger.info(f"🔥 Hotspot pool enabled: {stats['enabled_terms']} terms across {stats['enabled_categories']} categories")
+
+    def _build_prompt(self, text: str) -> str:
+        """
+        构建带热点池的 AI prompt
+
+        Args:
+            text: 待处理文本
+
+        Returns:
+            完整的 prompt，包含热点池提示
+        """
+        base_prompt = POSTPROCESSING_PROMPT
+
+        # 如果启用热点池，添加热点池部分
+        if self.enable_hotspot_pool and self.hotspot_pool:
+            hotspot_section = self.hotspot_pool.generate_prompt_section()
+            if hotspot_section:
+                # 在基本要求后面插入热点池部分
+                insert_marker = "## 基本要求"
+                parts = base_prompt.split(insert_marker)
+                if len(parts) == 2:
+                    base_prompt = parts[0] + insert_marker + parts[1].split("\n")[0] + "\n" + hotspot_section + "\n" + "\n".join(parts[1].split("\n")[1:])
+
+        return base_prompt.format(text=text)
 
     async def process(self, request: PostProcessRequest) -> PostProcessResponse:
         """
@@ -314,7 +346,7 @@ class AIPostProcessor:
             logger.info("Added OpenRouter recommended headers")
 
         client = OpenAI(**client_kwargs)
-        prompt = POSTPROCESSING_PROMPT.format(text=text)
+        prompt = self._build_prompt(text)
 
         logger.info(f"Calling OpenAI API: {model}")
         logger.debug(f"API Key prefix: {api_key[:10]}...{api_key[-4:]}")
@@ -376,7 +408,7 @@ class AIPostProcessor:
         # 创建客户端
         client = genai.Client(api_key=api_key)
 
-        prompt = POSTPROCESSING_PROMPT.format(text=text)
+        prompt = self._build_prompt(text)
 
         logger.info(f"Calling Gemini API: {model}")
 
@@ -407,7 +439,7 @@ class AIPostProcessor:
         import requests
 
         base_url = self.settings.OLLAMA_BASE_URL
-        prompt = POSTPROCESSING_PROMPT.format(text=text)
+        prompt = self._build_prompt(text)
 
         # 调用 Ollama API（OpenAI 兼容格式）
         url = f"{base_url}/v1/chat/completions"
