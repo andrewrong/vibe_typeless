@@ -65,7 +65,7 @@ class Settings(BaseModel):
 
     # Ollama 配置
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5:7b"  # 默认模型
+    OLLAMA_MODEL: str = "qwen2:7b"  # 默认模型
 
 
 # 加载 .env 文件
@@ -81,7 +81,7 @@ settings = Settings(
     GEMINI_API_KEY=env_config.get("GEMINI_API_KEY"),
     GEMINI_MODEL=env_config.get("GEMINI_MODEL", "gemini-3-flash-preview"),
     OLLAMA_BASE_URL=env_config.get("OLLAMA_BASE_URL", "http://localhost:11434"),
-    OLLAMA_MODEL=env_config.get("OLLAMA_MODEL", "qwen2.5:7b"),
+    OLLAMA_MODEL=env_config.get("OLLAMA_MODEL", "qwen2:7b"),
 )
 
 # 打印配置（用于调试）
