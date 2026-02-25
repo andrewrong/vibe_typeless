@@ -1,302 +1,57 @@
-# Typeless macOS 平替项目规范
-
-## 项目概述
-
-在 macOS 平台上实现 Typeless 的平替服务，使用 MLX 本地运行 ASR 模型作为推理服务，支持本地和云端 LLM 后处理。
-
-## 技术栈
-
-- **Swift**: SwiftUI + Swift Testing (系统集成、UI、音频捕获、文本注入)
-- **Python**: uv + pytest + MLX (ASR 推理服务、LLM 后处理)
-- **通信**: HTTP/WebSocket
-
-## 项目架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Swift (SwiftUI + Swift Testing)                            │
-│  - 系统集成、UI、音频捕获、文本注入                           │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                    HTTP/WebSocket
-                          │
-┌─────────────────────────────────────────────────────────────┐
-│  Python (uv + pytest)                                       │
-│  - MLX ASR 推理服务                                         │
-│  - 本地 LLM 后处理 (可选)                                   │
-│  - 云端 LLM 集成                                            │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## TDD 开发流程规范（强制执行）
-
-### ⚠️ 工作流程（每次代码变更必须遵循）
-
-```
-1. 编写失败测试 (Red)
-   ↓
-2. 编写最小实现 (Green)
-   ↓
-3. 运行所有测试 (必须 100% 通过)
-   ↓
-4. 重构优化代码 (Refactor)
-   ↓
-5. 再次运行所有测试 (确保无回归)
-   ↓
-6. 提交代码
-```
-
-### 🚫 强制规定
-
-**在以下情况下，禁止向用户交付代码：**
-
-1. **任何测试失败时** - 所有测试必须通过才能交付
-2. **未运行测试时** - 每次修改后必须运行完整测试套件
-3. **覆盖率低于 80% 时** - 新功能必须包含测试
-4. **未测试边界情况** - 必须包含错误处理和边界条件测试
-
-### 测试执行命令
-
-**Python 后端（每次修改后必须执行）：**
-```bash
-cd PythonService
-
-# 运行所有测试
-uv run pytest tests/ -v
-
-# 运行测试并生成覆盖率报告
-uv run pytest tests/ --cov=src --cov-report=html
-
-# 运行特定测试文件
-uv run pytest tests/test_api_complete.py -v
-
-# 快速检查（开发过程中）
-uv run pytest tests/test_api_complete.py -x --tb=short
-```
-
-**Swift 前端：**
-```bash
-cd TypelessApp
-swift test
-```
-
-### 测试文件说明
-
-- `tests/test_api_complete.py` - **核心 API 测试套件（43个测试）**
-  - 覆盖所有 ASR 端点
-  - 覆盖所有后处理端点
-  - 覆盖错误处理
-  - 每次代码变更前必须全部通过
-
-### 测试要求
-
-- **Swift**: Swift Testing 框架
-- **Python**: pytest + pytest-asyncio
-- **覆盖率**: 目标 > 80%
-- **关键路径**: 100% 覆盖
-- **CI/CD**: GitHub Actions 自动运行测试
-
-### 测试先行原则
-
-所有功能模块必须先编写测试用例，再实现功能代码：
-1. 编写失败测试
-2. 实现最小功能使测试通过
-3. 运行全部测试（必须 100% 通过）
-4. 重构优化代码
-5. 再次运行全部测试
-6. 提交代码
-
-## Git 提交规范
-
-### 提交信息格式
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-### Type 类型
-
-- `feat`: 新功能
-- `fix`: 修复 bug
-- `test`: 添加测试
-- `docs`: 文档更新
-- `refactor`: 代码重构
-- `style`: 代码格式调整
-- `perf`: 性能优化
-- `chore`: 构建/工具变更
-
-### Scope 范围
-
-- `asr`: ASR 服务
-- `postprocess`: 后处理服务
-- `audio`: 音频捕获
-- `text`: 文本注入
-- `ui`: 用户界面
-- `app`: 应用整体
-
-### 示例
-
-```
-feat(audio): add audio recorder module
-fix(asr): fix streaming endpoint connection leak
-test(postprocess): add tests for filler removal
-docs: update CLAUDE.md with architecture diagram
-refactor(services): extract cloud provider interface
-```
-
-## 依赖管理规范
-
-### Python (uv)
-
-```bash
-# 初始化项目
-uv init
-
-# 添加依赖
-uv add <package-name>
-
-# 添加开发依赖
-uv add --dev <package-name>
-
-# 锁定依赖
-uv lock
-
-# 运行应用
-uv run python src/asr/server.py
-
-# 运行测试
-uv run pytest
-
-# 运行测试并生成覆盖率报告
-uv run pytest --cov=src --cov-report=html
-```
-
-### Swift (SPM)
-
-```bash
-# 构建项目
-swift build
-
-# 运行应用
-swift run
-
-# 运行测试
-swift test
-
-# 添加依赖 (编辑 Package.swift)
-# 然后执行:
-swift package resolve
-```
-
-## 项目结构
-
-```
-typeless_2/
-├── CLAUDE.md                 # 项目规范文档 (Git 管理)
-├── README.md                 # 项目说明
-├── .git/                     # Git 版本控制
-├── .gitignore
-│
-├── SwiftApp/                 # SwiftUI 应用
-│   ├── App/
-│   │   ├── TypelessApp.swift           # 应用入口
-│   │   ├── ContentView.swift           # 主界面
-│   │   └── TypelessAppTests.swift      # Swift Testing
-│   ├── Core/
-│   │   ├── AudioRecorder/              # 音频捕获模块
-│   │   ├── TextInjector/               # 文本注入模块
-│   │   ├── AppDetector/                # 前台应用检测
-│   │   └── HotkeyManager/              # 全局快捷键
-│   ├── Services/
-│   │   ├── ASRService.swift            # ASR 客户端
-│   │   └── PostProcessor.swift         # 后处理客户端
-│   ├── Resources/                      # 资源文件
-│   └── Package.swift                   # SPM 配置
-│
-├── PythonService/            # Python 推理服务
-│   ├── pyproject.toml        # uv 项目配置
-│   ├── uv.lock               # uv 锁文件
-│   ├── src/
-│   │   ├── asr/
-│   │   │   ├── __init__.py
-│   │   │   ├── model.py              # MLX ASR 模型
-│   │   │   ├── server.py             # HTTP 服务
-│   │   │   └── stream.py             # 流式处理
-│   │   ├── postprocess/
-│   │   │   ├── __init__.py
-│   │   │   ├── local_llm.py          # MLX LLM 后处理
-│   │   │   ├── cloud_llm.py          # 云端 LLM 集成
-│   │   │   └── processor.py          # 规则引擎
-│   │   └── api/
-│   │       ├── __init__.py
-│   │       └── routes.py             # FastAPI 路由
-│   ├── tests/
-│   │   ├── test_asr.py               # ASR 测试 (pytest)
-│   │   ├── test_postprocess.py       # 后处理测试
-│   │   └── fixtures/                 # 测试数据
-│   └── README.md
-│
-└── docs/                     # 文档
-    ├── ARCHITECTURE.md        # 架构设计
-    └── API.md                 # API 文档
-```
-
-## 测试覆盖率要求
-
-- **单元测试覆盖率**: 目标 > 80%
-- **关键路径覆盖率**: 100%
-- **集成测试**: 覆盖主要用户场景
-
-## 代码规范
-
-### Python
-
-- 遵循 PEP 8 规范
-- 使用 ruff 进行代码检查
-- 使用 mypy 进行类型检查
-
-### Swift
-
-- 遵循 Swift API 设计指南
-- 使用 SwiftLint 进行代码检查
-- 代码格式化使用 SwiftFormat
-
-## 性能要求
-
-- **ASR 延迟**: < 500ms
-- **后处理延迟**: < 1s
-- **内存占用**: < 4GB (包含模型)
-- **CPU 占用**: < 50% (M系列芯片)
-
-## 安全规范
-
-- API 密钥通过环境变量管理
-- 不在代码中硬编码敏感信息
-- 使用 .gitignore 排除敏感文件
-
-## 开发工作流
-
-1. 从 main 分支创建 feature 分支
-2. 按照 TDD 流程开发
-3. 运行测试确保通过
-4. 提交代码并推送到远程
-5. 创建 Pull Request
-6. 通过 CI/CD 检查
-7. Code Review
-8. 合并到 main 分支
-
-## 文档要求
-
-- 所有公开 API 必须有文档注释
-- 关键算法需要详细注释
-- 重大变更更新相关文档
-
-## 版本发布
-
-- 遵循语义化版本规范 (Semantic Versioning)
-- 维护 CHANGELOG.md
-- 标记重要版本
+# 🤖 Project Guidelines & Context for Claude Code
+
+## 🛠️ Tech Stack & Toolchain
+- **Package Manager**: `uv` (Fast Python package installer and resolver)
+- **Language**: Python 3.12+ (Strict Type Hints Required)
+- **Testing**: `pytest` + `pytest-cov`
+- **Linting/Formatting**: `ruff`
+- **Version Control**: Git
+
+## ⚡ Operational Commands
+All commands must be executed via `uv`.
+- **Run Tests**: `uv run pytest` (or `uv run pytest tests/test_specific.py`)
+- **Lint Code**: `uv run ruff check .`
+- **Format Code**: `uv run ruff format .`
+- **Run App**: `uv run python src/main.py`
+- **Add Dependency**: `uv add <package>` (Ask before adding!)
+
+## 🧬 Development Workflow (Strict TDD)
+You must follow the **Red-Green-Refactor** cycle for every task:
+
+1.  **PLAN**: briefly explain your implementation plan and file structure changes.
+2.  **RED**: Write a failing test case in `tests/`. Run it to confirm failure.
+3.  **GREEN**: Write the *minimal* code in `src/` to pass the test.
+4.  **REFACTOR**: Optimize code, add type hints, docstrings. Run `uv run ruff check .`.
+5.  **COMMIT**: Create a git commit using Conventional Commits.
+
+## 📝 Coding Standards (Non-negotiable)
+
+### 1. Type Hints & Docstrings
+- **Strict Typing**: All function arguments and return values MUST have type hints.
+  - *Bad*: `def process(data):`
+  - *Good*: `def process(data: dict[str, Any]) -> list[int]:`
+- **Docstrings**: Use Google Style docstrings for all public modules, classes, and functions.
+
+### 2. Architecture & Design
+- **Modularity**: Keep functions small (Single Responsibility Principle).
+- **No Global State**: Avoid global variables; use dependency injection if needed.
+- **Path Handling**: Always use `pathlib.Path`, never string concatenation for paths.
+- **Error Handling**: Use custom exceptions in `src/exceptions.py` rather than generic `Exception`.
+
+### 3. Testing Rules
+- **Structure**: Use `Arrange-Act-Assert` pattern in tests.
+- **Independence**: Tests must not depend on each other or external execution order.
+- **Mocking**: External APIs/DBs must be mocked. Do not make real network calls during tests.
+
+## 📦 Git Commit Convention
+Follow **Conventional Commits** format:
+- `feat: description` (New feature)
+- `fix: description` (Bug fix)
+- `docs: description` (Documentation only)
+- `refactor: description` (Code change that neither fixes a bug nor adds a feature)
+- `test: description` (Adding missing tests or correcting existing tests)
+
+## 🚫 Constraints (Don'ts)
+- **DO NOT** remove existing comments unless they are obsolete.
+- **DO NOT** leave `print()` statements for debugging; use `logging`.
+- **DO NOT** hallucinate dependencies. If you need a library, ask permission to `uv add` it.
