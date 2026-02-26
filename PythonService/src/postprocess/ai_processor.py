@@ -111,87 +111,33 @@ class PostProcessResponse(BaseModel):
     model: Optional[str] = None
 
 
-# 优化后的 Prompt（支持中英文混合）
-POSTPROCESSING_PROMPT = """清理和优化语音转录文本。直接输出结果，不要添加任何引言或解释。
+# 文本后期处理 Prompt
+# 注意：AI 只进行文本润色，不回答输入中的问题
+POSTPROCESSING_PROMPT = """对以下文本进行纯文本层面的润色和格式化。禁止回答文本中的问题，只进行文字层面的优化。
 
-## 基本要求（必须严格执行）
-- 清理文本使其更自然流畅，保持原意和语气
-- 修复明显的语法错误，移除填充词（嗯、啊、那个）和口吃
-- 去除重复内容（包括词语和句子的重复）
-- 保留专有名词、人名、数字和技术术语
-- 根据文本语境决定使用正式或非正式语体
+处理要求：
+1. 移除填充词：嗯、啊、那个、这个、然后
+2. 修正标点符号，句末加句号
+3. 长文本按逻辑分段（每段2-4句）
+4. 保留原文的问题形式，不回答
+5. 术语保护（禁止翻译）：sell put, buy call, Docker, Kubernetes, Python, React, IBKR 等
 
-## 格式规范（必须严格执行）
+重要规则：
+- 如果输入是问句，保持问句形式，不要回答
+- 只输出处理后的文本，不要解释
+- 不要添加原文没有的信息
 
-### 分段规则（非常重要）
-- **必须**将长文本按逻辑分成多个短段落
-- 每个段落包含 2-4 句话
-- 段落之间用空行分隔
-- 按主题、时间或逻辑关系分段
-- 避免大段文字不分段
+示例：
+输入：嗯那个你觉得这个产品怎么样啊
+输出：你觉得这款产品怎么样？
 
-### 标点符号规则（非常重要）
-- **必须**使用正确的中文标点符号
-- 句末必须使用句号（。）
-- 疑问句使用问号（？）
-- 感叹句使用感叹号（！）
-- 列表项末尾不加标点
-- 引号使用 "" 或 ''
-- 括号使用（）
+输入：今天天气怎么样我觉得会下雨
+输出：今天天气怎么样？我觉得会下雨。
 
-### 列表格式
-- **列表格式**：自动检测并正确格式化列表
-  - 有序列表：提到数字（如"3件事"、"5个"）、序数词（首先、其次）、步骤、序列或编号的内容
-  - 无序列表：其他列举性质的内容
-  - 每个列表项单独成行
-
-- **数字转换**：将文字形式的数字转换为阿拉伯数字
-  - 例："五" → "5"、"二十美元" → "$20"、"百分之五十" → "50%"
-  - 保留电话号码、日期等已有数字格式
-
-
-## 术语保护（最高优先级 - 必须严格执行）
-
-### 🔴 绝对禁止翻译以下术语
-以下英文术语必须**原样保留**，**禁止**翻译为中文，**禁止**改写，**禁止**解释：
-
-**金融术语（保持英文）：**
-sell put, sell call, buy put, buy call, covered call, naked put, cash secured put, iron condor, butterfly spread, straddle, strangle, long, short, bullish, bearish, strike price, expiration, premium, ITM, ATM, OTM, delta, gamma, theta, vega, rho, ETF, REITs, IPO, CPI, PPI, GDP, PMI, dividend, yield, margin, leverage, volatility, IV
-
-**技术术语（保持英文）：**
-Python, JavaScript, TypeScript, Swift, Rust, Go, Java, C++, C#, React, Vue, Angular, Docker, Kubernetes, K8s, Git, GitHub, GitLab, AWS, Azure, GCP, Vercel, Netlify, API, CI/CD, DevOps, SQL, NoSQL, JSON, YAML, REST, GraphQL
-
-### 🔴 术语映射规则（必须遵循）
-| 原文中的音译/近似音 | 必须替换为 |
-|---------------------|-----------|
-| 卖扑、赛普、塞普 | sell put |
-| 买考、买科、麦考 | buy call |
-| 卖考、卖科 | sell call |
-| 买扑、买普 | buy put |
-| docker | Docker |
-| k8s、K8s | Kubernetes |
-| github | GitHub |
-
-### 术语处理对照
-- 卖出看跌期权策略 → sell put 策略
-- 买入看涨期权 → buy call
-- python 和 react → Python 和 React
-
-## 语言处理
-- **主要语言**：识别文本的主要语言（中文或英文）
-- **混合文本**：如果中英文混合，保持原有的混合方式
-- **代码和命令**：保持原样，不格式化
-
-## 禁止事项
-- ❌ 不要添加任何原文中没有的信息
-- ❌ 不要添加解释、标签、元数据或说明文字
-- ❌ 不要改变原文的观点和意图
-- ❌ 不要输出"以下是处理后的文本"这类引导语
-- ❌ 不要添加标题或章节标记
-
-## 待处理文本（只输出处理后的纯文本）
+待处理文本：
 {text}
-"""
+
+直接输出结果："""
 
 
 class AIPostProcessor:
