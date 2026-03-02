@@ -46,10 +46,9 @@ class BackgroundRecordingManager {
 
         setupRecorderCallbacks()
 
-        Task {
-            await self.audioRecorder?.prepareRecorder()
-            await prepareNextSession()
-        }
+        // Note: prepareRecorder is now called when user presses hotkey
+        // to avoid keeping microphone open (which forces HFP mode)
+        // This allows A2DP music mode when not recording
     }
 
     private func setupRecorderCallbacks() {
@@ -101,15 +100,10 @@ class BackgroundRecordingManager {
     }
 
     /// Pre-create ASR session so it's ready when user presses hotkey
+    /// Note: Session is now created when recording starts (after sample rate is determined)
     func prepareNextSession() async {
-        guard sessionId == nil else { return }
-        do {
-            let appInfo = getAppInfo()
-            let newSessionId = try await asrService.startSession(appInfo: appInfo)
-            self.sessionId = newSessionId
-        } catch {
-            NSLog("⚠️ Failed to pre-create session: \(error.localizedDescription)")
-        }
+        // Session creation deferred to startRecording when sample rate is known
+        // This ensures backend receives correct sample rate for resampling
     }
 
     /// Start background recording
@@ -120,25 +114,30 @@ class BackgroundRecordingManager {
             _ = powerMode.detectAndUpdate()
             pendingAudioChunks.removeAll()
 
-            // Create session if needed
-            if sessionId == nil {
-                NSLog("⏳ Creating session...")
-                let appInfo = getAppInfo()
-                let newSessionId = try await asrService.startSession(appInfo: appInfo)
-                self.sessionId = newSessionId
-                NSLog("✅ Session created")
-            }
-
             guard let recorder = audioRecorder else {
                 throw NSError(domain: "BackgroundRecording", code: -1, userInfo: [NSLocalizedDescriptionKey: "No audio recorder available"])
             }
 
+            // Start audio recorder (creates engine and starts recording)
             NSLog("🎤 Starting audio recorder...")
-            try recorder.startRecording(sessionReady: sessionId != nil)
+            try await recorder.startRecording(sessionReady: false)
+
+            // Create session with actual sample rate from hardware
+            if sessionId == nil {
+                NSLog("⏳ Creating session with sampleRate=\(Int(recorder.sampleRate))Hz...")
+                let appInfo = getAppInfo()
+                let newSessionId = try await asrService.startSession(appInfo: appInfo, sampleRate: Int(recorder.sampleRate))
+                self.sessionId = newSessionId
+                NSLog("✅ Session created with sampleRate=\(Int(recorder.sampleRate))Hz")
+
+                // Start sending audio chunks now that session is ready
+                recorder.markReadyToSend()
+                NSLog("🎤 Audio recorder ready to send chunks")
+            }
 
             totalAudioBytesSent = 0
             recordingStartTime = Date()
-            hasRecordingStarted = false
+            // Don't reset hasRecordingStarted here - it will be set by onFirstBuffer callback
             isRecording = true
 
         } catch {
@@ -207,38 +206,53 @@ class BackgroundRecordingManager {
 
         // Wait for pending chunks
         if isSendingPendingChunks {
+            NSLog("⏳ Waiting for pending chunks...")
             var attempts = 0
             while isSendingPendingChunks && attempts < 20 {
                 try? await Task.sleep(nanoseconds: 100_000_000)
                 attempts += 1
             }
+            NSLog("✅ Pending chunks complete (attempts: \(attempts))")
         }
 
         // Handle session not found (404) by recreating session
         if sessionId == nil {
+            NSLog("⚠️ Session ID is nil, creating new session...")
             do {
                 let appInfo = getAppInfo()
                 let newSessionId = try await asrService.startSession(appInfo: appInfo)
                 self.sessionId = newSessionId
+                NSLog("✅ New session created: \(newSessionId.prefix(8))...")
             } catch {
+                NSLog("❌ Failed to create new session: \(error)")
                 menuBarApp?.updateMenuBarState(.idle)
                 return
             }
         }
 
         if let sessionId = sessionId {
+            NSLog("📝 Stopping session: \(sessionId.prefix(8))...")
+
             if !pendingAudioChunks.isEmpty {
+                NSLog("📤 Sending \(pendingAudioChunks.count) pending chunks...")
                 await sendPendingAudioChunks()
             }
 
+            NSLog("⏳ Waiting for backend processing...")
             try? await Task.sleep(nanoseconds: 500_000_000)
 
             do {
+                NSLog("🔄 Calling stopSession API...")
                 let result = try await asrService.stopSession(sessionId: sessionId)
                 let transcript = result.finalTranscript
+                NSLog("✅ Got transcript (\(transcript.count) chars): \(transcript.prefix(100))...")
 
                 if !transcript.isEmpty {
+                    NSLog("💉 Injecting text...")
                     try await textInjector.inject(text: transcript)
+                    NSLog("✅ Text injected successfully")
+                } else {
+                    NSLog("⚠️ Transcript is empty, nothing to inject")
                 }
             } catch ASRError.serverError(404, _) {
                 // Session not found - backend may have restarted
@@ -254,8 +268,10 @@ class BackgroundRecordingManager {
                     // Retry stop with new session (though this will be a fresh empty session)
                     let result = try await asrService.stopSession(sessionId: newSessionId)
                     let transcript = result.finalTranscript
+                    NSLog("✅ Retry stop successful, transcript (\(transcript.count) chars)")
                     if !transcript.isEmpty {
                         try await textInjector.inject(text: transcript)
+                        NSLog("✅ Text injected (retry path)")
                     }
                 } catch {
                     NSLog("❌ Failed to recreate session: \(error.localizedDescription)")
@@ -263,12 +279,16 @@ class BackgroundRecordingManager {
             } catch {
                 NSLog("❌ Failed to stop session: \(error)")
             }
+        } else {
+            NSLog("⚠️ No session ID available for stop")
         }
 
+        NSLog("🧹 Cleaning up...")
         menuBarApp?.updateMenuBarState(.idle)
         self.pendingAudioChunks.removeAll()
         self.sessionId = nil
         self.hasRecordingStarted = false
+        NSLog("✅ Cleanup complete")
 
         Task {
             await prepareNextSession()

@@ -278,3 +278,39 @@ class AudioProcessor:
         gain = min(gain, 10.0)
 
         return audio * gain
+
+    def resample_audio(
+        self,
+        audio: np.ndarray,
+        source_rate: int,
+        target_rate: int
+    ) -> np.ndarray:
+        """
+        Resample audio from source_rate to target_rate
+
+        Uses simple linear interpolation for resampling.
+        For production use, consider using scipy.signal.resample or librosa.
+
+        Args:
+            audio: Audio data as numpy array (float32, range [-1, 1])
+            source_rate: Source sample rate in Hz
+            target_rate: Target sample rate in Hz
+
+        Returns:
+            Resampled audio array
+        """
+        if source_rate == target_rate:
+            return audio
+
+        # Calculate resampling ratio
+        ratio = target_rate / source_rate
+        new_length = int(len(audio) * ratio)
+
+        # Use linear interpolation for resampling
+        old_indices = np.arange(len(audio))
+        new_indices = np.arange(new_length) / ratio
+
+        # Interpolate
+        resampled = np.interp(new_indices, old_indices, audio)
+
+        return resampled.astype(np.float32)

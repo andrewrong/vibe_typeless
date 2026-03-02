@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Bo
 
 logger = logging.getLogger(__name__)
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import numpy as np
 
 
@@ -106,6 +106,7 @@ from src.api.job_queue import job_queue, JobInfo
 class SessionStartRequest(BaseModel):
     """Request for session start"""
     app_info: Optional[str] = None
+    sample_rate: Optional[int] = Field(default=16000, ge=8000, le=48000, description="Audio sample rate in Hz (8000-48000, default 16000)")
 
 
 class SessionStartResponse(BaseModel):
@@ -231,14 +232,20 @@ async def start_session(request: SessionStartRequest = None):
 
     session_id = str(uuid.uuid4())
 
+    # Get sample rate from request (default 16000)
+    sample_rate = request.sample_rate if request and request.sample_rate else 16000
+
     sessions[session_id] = {
         "session_id": session_id,
         "status": "started",
         "audio_chunks": [],
         "partial_transcript": "",
         "chunks_received": 0,
-        "app_info": request.app_info if request else None
+        "app_info": request.app_info if request else None,
+        "sample_rate": sample_rate  # Store the sample rate for this session
     }
+
+    logger.info(f"📱 Session started: {session_id[:8]}..., sample_rate={sample_rate}Hz")
 
     # Log app info for Power Mode
     if request and request.app_info:
@@ -280,7 +287,9 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
     # Convert bytes to numpy array
     try:
         audio_array = np.frombuffer(request, dtype=np.int16)
-        logger.info(f"📥 [BackendAudio] Converted to {len(audio_array)} samples ({len(audio_array)/16000*1000:.1f}ms audio)")
+        sample_rate = session.get("sample_rate", 16000)
+        duration_ms = len(audio_array) / sample_rate * 1000
+        logger.info(f"📥 [BackendAudio] Converted to {len(audio_array)} samples @ {sample_rate}Hz ({duration_ms:.1f}ms audio)")
     except Exception as e:
         logger.error(f"Failed to convert audio data: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid audio data: {e}")
@@ -370,6 +379,19 @@ async def stop_session(session_id: str):
     if session["audio_chunks"]:
         all_audio = np.concatenate(session["audio_chunks"])
 
+        # Get sample rate and resample if needed (ASR expects 16kHz)
+        source_sample_rate = session.get("sample_rate", 16000)
+        processor = None
+        if source_sample_rate != 16000:
+            logger.info(f"🎛️ [BackendAudio] Resampling from {source_sample_rate}Hz to 16000Hz...")
+            from src.asr.audio_processor import AudioProcessor
+            processor = AudioProcessor()
+            # Convert to float32 for processing
+            audio_float = all_audio.astype(np.float32) / 32768.0
+            resampled = processor.resample_audio(audio_float, source_sample_rate, 16000)
+            all_audio = (resampled * 32767).astype(np.int16)
+            logger.info(f"✅ [BackendAudio] Resampled: {len(session['audio_chunks'])} chunks @ {source_sample_rate}Hz → {len(all_audio)} samples @ 16000Hz")
+
         # Apply audio processing pipeline (VAD → Enhancement → Segmentation)
         logger.info("🎛️ Applying audio processing pipeline...")
 
@@ -384,7 +406,7 @@ async def stop_session(session_id: str):
 
         # Process audio
         logger.info(f"🎛️ [BackendAudio] Starting pipeline processing...")
-        logger.info(f"🎛️ [BackendAudio] Original audio: {len(all_audio)} samples ({len(all_audio)/16000:.2f}s)")
+        logger.info(f"🎛️ [BackendAudio] Original audio: {len(all_audio)} samples @ 16000Hz ({len(all_audio)/16000:.2f}s)")
 
         processed_segments, stats = pipeline.process(all_audio)
 
@@ -420,8 +442,8 @@ async def stop_session(session_id: str):
             # Apply intelligent punctuation correction
             if power_config['add_punctuation']:
                 logger.info(f"🔧 Applying punctuation correction ({len(final_transcript)} chars)...")
-                logger.info(f"   Processor has punctuation_corrector: {hasattr(processor, 'punctuation_corrector')}")
-                if hasattr(processor, 'punctuation_corrector'):
+                logger.info(f"   Processor has punctuation_corrector: {processor is not None and hasattr(processor, 'punctuation_corrector')}")
+                if processor is not None and hasattr(processor, 'punctuation_corrector'):
                     before_punct = final_transcript
                     final_transcript = processor.punctuation_corrector.correct(final_transcript)
                     logger.info(f"✅ After punctuation ({len(final_transcript)} chars): '{final_transcript}'")

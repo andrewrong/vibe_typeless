@@ -49,7 +49,7 @@ echo "   模型缓存: $(pwd)/runtime/models"
 echo "   日志目录: $(pwd)/runtime/logs"
 echo ""
 
-uv run --prerelease=allow uvicorn src.api.server:app \
+UV_NO_SYNC=1 uv run --no-sync uvicorn src.api.server:app \
     --host 127.0.0.1 \
     --port 28111 \
     > runtime/logs/server.log 2>&1 &

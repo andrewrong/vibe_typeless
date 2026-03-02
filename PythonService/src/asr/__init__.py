@@ -19,7 +19,7 @@ MODEL_TYPE: Literal["whisper", "vibevoice", "sensevoice"] = "sensevoice"
 
 # Global singleton model instances per language (prevents memory leaks from repeated model loading)
 _cached_models: dict = {}
-_default_language: str = "auto"  # auto-detect for mixed language support
+_default_language: str = "zh"  # Default to Chinese for better accuracy (was "auto")
 
 
 def get_asr_model(language: str = "auto"):

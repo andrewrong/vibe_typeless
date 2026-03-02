@@ -112,17 +112,21 @@ class ASRService: NSObject {
     // MARK: - Streaming API
 
     /// Start a new ASR session
-    func startSession(appInfo: String? = nil) async throws -> String {
+    /// - Parameters:
+    ///   - appInfo: Optional application information
+    ///   - sampleRate: Audio sample rate in Hz (default 16000, supports 8000-48000)
+    func startSession(appInfo: String? = nil, sampleRate: Int = 16000) async throws -> String {
         let url = URL(string: "\(baseURL)/api/asr/start")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Add app info if available
+        // Build request body with app info and sample rate
+        var body: [String: Any] = ["sample_rate": sampleRate]
         if let appInfo = appInfo {
-            let body = ["app_info": appInfo]
-            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            body["app_info"] = appInfo
         }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
 
