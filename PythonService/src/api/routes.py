@@ -100,6 +100,7 @@ from src.postprocess.cloud_llm import ProviderConfig, create_provider_from_env
 from src.postprocess.ai_processor import AIPostProcessor, PostProcessRequest as AIRequest, PostProcessResponse as AIResponse
 from src.api.websocket_stream import streamer
 from src.api.job_queue import job_queue, JobInfo
+from src.monitoring import start_session_monitoring, record_preview_generated, record_session_completed, record_asr_success
 
 
 # Request/Response models
@@ -245,6 +246,9 @@ async def start_session(request: SessionStartRequest = None):
         "sample_rate": sample_rate  # Store the sample rate for this session
     }
 
+    # Start monitoring this session
+    start_session_monitoring(session_id)
+
     logger.info(f"📱 Session started: {session_id[:8]}..., sample_rate={sample_rate}Hz")
 
     # Log app info for Power Mode
@@ -332,6 +336,9 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
                 partial_transcript = personal_dictionary.apply(partial_transcript)
 
             logger.debug(f"📝 Preview transcript: '{partial_transcript[:50]}...'")
+
+            # Record preview generation for latency tracking
+            record_preview_generated(session_id)
 
         except Exception as e:
             logger.error(f"Preview transcription failed: {e}")
@@ -492,6 +499,10 @@ async def stop_session(session_id: str):
         logger.info(f"✅ Final transcript ({len(final_transcript)} chars)")
     else:
         final_transcript = ""
+
+    # Record session completion
+    record_session_completed(session_id, success=True)
+    record_asr_success(success=True)
 
     # Clean up session
     total_chunks = session["chunks_received"]
