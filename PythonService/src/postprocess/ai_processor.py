@@ -438,14 +438,39 @@ class AIPostProcessor:
         # 使用 Ollama 原生 API 以支持 num_ctx 参数
         url = f"{base_url}/api/generate"
 
+        # 检查是否是 Qwen 3.5 模型（需要禁用思考模式）
+        is_qwen35 = "qwen3.5" in model.lower()
+        if is_qwen35:
+            logger.info("🔧 Qwen 3.5 detected, disabling thinking mode")
+
         payload = {
             "model": model,
             "prompt": prompt,
             "temperature": 0.5,  # 稍微提高以更好地遵循分段指令
             "num_predict": 4096,
             # Note: num_ctx removed - it affects model behavior unexpectedly
-            "stream": False
+            "stream": False,
+            # 对于 Qwen 3.5，禁用思考模式
+            "options": {
+                "temperature": 0.5,
+            }
         }
+
+        # Qwen 3.5 需要通过 chat API 来禁用思考模式
+        if is_qwen35:
+            url = f"{base_url}/api/chat"
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.5,
+                "num_predict": 4096,
+                "stream": False,
+                # 禁用思考模式
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
 
         logger.info(f"Calling Ollama: {model} @ {base_url}")
 
@@ -458,7 +483,12 @@ class AIPostProcessor:
         response.raise_for_status()
         data = response.json()
 
-        # 提取结果 (Ollama 原生 API 格式)
-        processed_text = data["response"].strip()
+        # 提取结果 (根据 API 类型)
+        if is_qwen35:
+            # /api/chat 端点格式
+            processed_text = data["message"]["content"].strip()
+        else:
+            # /api/generate 端点格式
+            processed_text = data["response"].strip()
 
         return processed_text
