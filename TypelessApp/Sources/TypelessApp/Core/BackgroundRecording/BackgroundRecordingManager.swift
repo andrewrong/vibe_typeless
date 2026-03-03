@@ -233,41 +233,55 @@ class BackgroundRecordingManager {
                 await sendPendingAudioChunks()
             }
 
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            // Calculate dynamic timeout based on audio duration
+            // Rough estimate: processing takes ~0.5x audio duration + 10s base + AI overhead
+            let audioDurationSeconds = Double(totalAudioBytesSent) / 32000.0 // 16kHz * 2 bytes
+            let processingTimeout = max(30, audioDurationSeconds * 0.5 + 20) // At least 30s, or 0.5x audio + 20s
+            let requestTimeout = processingTimeout + 10 // Add buffer for network
 
-            do {
-                let result = try await asrService.stopSession(sessionId: sessionId)
+            TLogInfo("⏱️ Processing ~\(Int(audioDurationSeconds))s audio, timeout: \(Int(processingTimeout))s")
+
+            // Use withTimeout to prevent hanging on long processing
+            let stopResult: SessionStopResponse? = await withTimeout(seconds: processingTimeout) {
+                do {
+                    return try await self.asrService.stopSession(sessionId: sessionId, timeout: requestTimeout)
+                } catch ASRError.serverError(404, _) {
+                    // Session not found - backend may have restarted
+                    TLogDebug("Session not found (404), recreating...")
+                    self.sessionId = nil
+
+                    do {
+                        let appInfo = self.getAppInfo()
+                        let newSessionId = try await self.asrService.startSession(appInfo: appInfo)
+                        self.sessionId = newSessionId
+
+                        // Retry stop with new session (though this will be a fresh empty session)
+                        return try await self.asrService.stopSession(sessionId: newSessionId, timeout: requestTimeout)
+                    } catch {
+                        TLogError("Failed to recreate session: \(error.localizedDescription)")
+                        return nil
+                    }
+                } catch {
+                    TLogError("Failed to stop session: \(error)")
+                    return nil
+                }
+            }
+
+            if let result = stopResult {
                 let transcript = result.finalTranscript
-
                 if !transcript.isEmpty {
                     TLogInfo("✅ Got transcript (\(transcript.count) chars)")
-                    try await textInjector.inject(text: transcript)
-                    TLogInfo("✅ Text injected")
+                    do {
+                        try await textInjector.inject(text: transcript)
+                        TLogInfo("✅ Text injected")
+                    } catch {
+                        TLogError("Failed to inject text: \(error)")
+                    }
                 } else {
                     TLogInfo("⚠️ Transcript empty")
                 }
-            } catch ASRError.serverError(404, _) {
-                // Session not found - backend may have restarted
-                TLogDebug("Session not found (404), recreating...")
-                self.sessionId = nil
-
-                do {
-                    let appInfo = getAppInfo()
-                    let newSessionId = try await asrService.startSession(appInfo: appInfo)
-                    self.sessionId = newSessionId
-
-                    // Retry stop with new session (though this will be a fresh empty session)
-                    let result = try await asrService.stopSession(sessionId: newSessionId)
-                    let transcript = result.finalTranscript
-                    if !transcript.isEmpty {
-                        try await textInjector.inject(text: transcript)
-                        TLogInfo("✅ Text injected (retry)")
-                    }
-                } catch {
-                    TLogError("Failed to recreate session: \(error.localizedDescription)")
-                }
-            } catch {
-                TLogError("Failed to stop session: \(error)")
+            } else {
+                TLogError("❌ Stop session timed out after \(Int(processingTimeout))s")
             }
         } else {
             TLogDebug("No session ID available")

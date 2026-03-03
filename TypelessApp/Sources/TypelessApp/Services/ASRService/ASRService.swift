@@ -164,11 +164,15 @@ class ASRService: NSObject {
     }
 
     /// Stop ASR session and get final transcript
-    func stopSession(sessionId: String) async throws -> SessionStopResponse {
+    /// - Parameters:
+    ///   - sessionId: Session identifier
+    ///   - timeout: Timeout in seconds (default 30s for processing)
+    func stopSession(sessionId: String, timeout: TimeInterval = 30) async throws -> SessionStopResponse {
         let url = URL(string: "\(baseURL)/api/asr/stop/\(sessionId)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = timeout
 
         let (data, response) = try await session.data(for: request)
 
