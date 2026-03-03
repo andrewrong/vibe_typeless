@@ -51,6 +51,40 @@ class LatencyMetrics:
 
 
 @dataclass
+class ThroughputMetrics:
+    """Throughput metrics for audio processing"""
+    operation: str
+    total_samples: int = 0
+    total_duration_seconds: float = 0.0
+    sample_count: int = 0
+    last_update: float = field(default_factory=time.time)
+
+    def record(self, samples: int, duration_seconds: float) -> None:
+        """Record audio processing throughput"""
+        self.total_samples += samples
+        self.total_duration_seconds += duration_seconds
+        self.sample_count += 1
+        self.last_update = time.time()
+
+    def get_stats(self) -> Dict:
+        """Get throughput statistics"""
+        if self.total_duration_seconds == 0:
+            return {"rtf": 0.0, "avg_samples": 0, "count": 0}
+
+        # RTF (Real-Time Factor) = processing_time / audio_duration
+        # Lower is better, 1.0 means real-time, 0.5 means 2x faster than real-time
+        rtf = self.total_duration_seconds / (self.total_samples / 16000.0) if self.total_samples > 0 else 0
+
+        return {
+            "rtf": rtf,
+            "avg_samples": self.total_samples / max(self.sample_count, 1),
+            "count": self.sample_count,
+            "total_audio_seconds": self.total_samples / 16000.0,
+            "total_process_seconds": self.total_duration_seconds
+        }
+
+
+@dataclass
 class AvailabilityMetrics:
     """Availability metrics for a specific operation"""
     operation: str  # e.g., "recording", "asr"
@@ -92,7 +126,9 @@ class MetricsCollector:
         self._lock = threading.RLock()
         self._latency_metrics: Dict[str, LatencyMetrics] = {}
         self._availability_metrics: Dict[str, AvailabilityMetrics] = {}
+        self._throughput_metrics: Dict[str, ThroughputMetrics] = {}
         self._session_timings: Dict[str, Dict] = {}  # For tracking session lifecycle
+        self._processing_start_times: Dict[str, float] = {}  # Track processing start times
 
     def start_session_timing(self, session_id: str) -> None:
         """Start timing a new session"""
@@ -166,6 +202,36 @@ class MetricsCollector:
                 self._availability_metrics[operation] = AvailabilityMetrics(operation=operation)
             self._availability_metrics[operation].record(success, error)
 
+    def start_processing(self, session_id: str) -> None:
+        """Start timing audio processing for throughput calculation"""
+        with self._lock:
+            self._processing_start_times[session_id] = time.time()
+
+    def end_processing(self, session_id: str, samples: int) -> None:
+        """End timing and record throughput"""
+        with self._lock:
+            if session_id in self._processing_start_times:
+                duration = time.time() - self._processing_start_times[session_id]
+
+                if "asr_processing" not in self._throughput_metrics:
+                    self._throughput_metrics["asr_processing"] = ThroughputMetrics("asr_processing")
+
+                self._throughput_metrics["asr_processing"].record(samples, duration)
+                del self._processing_start_times[session_id]
+
+    def get_throughput_report(self, operation: Optional[str] = None) -> Dict:
+        """Get throughput report"""
+        with self._lock:
+            if operation:
+                if operation in self._throughput_metrics:
+                    return {operation: self._throughput_metrics[operation].get_stats()}
+                return {}
+
+            return {
+                op: metrics.get_stats()
+                for op, metrics in self._throughput_metrics.items()
+            }
+
     def get_latency_report(self, operation: Optional[str] = None) -> Dict:
         """Get latency report for all or specific operation"""
         with self._lock:
@@ -197,6 +263,7 @@ class MetricsCollector:
         return {
             "latency": self.get_latency_report(),
             "availability": self.get_availability_report(),
+            "throughput": self.get_throughput_report(),
             "timestamp": time.time()
         }
 
@@ -243,3 +310,58 @@ class MetricsCollector:
 
 # Global metrics collector instance
 metrics_collector = MetricsCollector()
+
+
+def start_periodic_reporting(interval_seconds: int = 300):
+    """
+    Start periodic reporting in a background thread
+
+    Args:
+        interval_seconds: Reporting interval in seconds (default 5 minutes)
+    """
+    import threading
+
+    def report_loop():
+        while True:
+            time.sleep(interval_seconds)
+            try:
+                report = metrics_collector.get_full_report()
+                alerts = metrics_collector.check_alerts()
+
+                logger.info("=" * 60)
+                logger.info("📊 Monitoring Report (last %ds)", interval_seconds)
+                logger.info("=" * 60)
+
+                # Latency summary
+                latency = report.get("latency", {})
+                if latency:
+                    logger.info("📈 Latency Metrics:")
+                    for op, stats in latency.items():
+                        if stats["count"] > 0:
+                            logger.info(f"   {op}: avg={stats['avg_ms']:.0f}ms, p95={stats['p95_ms']:.0f}ms, count={stats['count']}")
+
+                # Availability summary
+                availability = report.get("availability", {})
+                if availability:
+                    logger.info("📈 Availability Metrics:")
+                    for op, stats in availability.items():
+                        if stats["total"] > 0:
+                            logger.info(f"   {op}: {stats['success']}/{stats['total']} ({stats['success_rate']*100:.1f}%)")
+
+                # Alerts
+                if alerts:
+                    logger.warning("⚠️  Active Alerts:")
+                    for alert in alerts:
+                        logger.warning(f"   [{alert['severity'].upper()}] {alert['message']}")
+                else:
+                    logger.info("✅ No active alerts")
+
+                logger.info("=" * 60)
+
+            except Exception as e:
+                logger.error(f"Error in monitoring report: {e}")
+
+    # Start in daemon thread
+    thread = threading.Thread(target=report_loop, daemon=True)
+    thread.start()
+    logger.info(f"📊 Periodic monitoring started (interval: {interval_seconds}s)")

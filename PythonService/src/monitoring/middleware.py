@@ -68,3 +68,13 @@ def record_session_completed(session_id: str, success: bool) -> None:
 def record_asr_success(success: bool, error: Optional[str] = None) -> None:
     """Record ASR operation result"""
     metrics_collector.record_availability("asr", success, error)
+
+
+def start_processing(session_id: str) -> None:
+    """Start timing audio processing"""
+    metrics_collector.start_processing(session_id)
+
+
+def end_processing(session_id: str, samples: int) -> None:
+    """End timing and record throughput"""
+    metrics_collector.end_processing(session_id, samples)

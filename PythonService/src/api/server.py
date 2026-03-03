@@ -19,7 +19,7 @@ from slowapi.errors import RateLimitExceeded
 from .routes import router, postprocess_router, job_router
 from .rate_limit import limiter
 from ..version import get_version_info, get_version_string, __version__
-from ..monitoring import monitoring_router, MonitoringMiddleware
+from ..monitoring import monitoring_router, MonitoringMiddleware, metrics_collector, start_periodic_reporting
 
 app = FastAPI(
     title="Typeless Service",
@@ -62,6 +62,9 @@ async def version():
 # Log version on startup
 logger = logging.getLogger(__name__)
 logger.info(f"🚀 Typeless Python Service v{get_version_string()}")
+
+# Start periodic monitoring report (every 5 minutes)
+start_periodic_reporting(interval_seconds=300)
 
 
 if __name__ == "__main__":

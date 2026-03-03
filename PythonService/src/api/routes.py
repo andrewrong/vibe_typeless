@@ -100,7 +100,7 @@ from src.postprocess.cloud_llm import ProviderConfig, create_provider_from_env
 from src.postprocess.ai_processor import AIPostProcessor, PostProcessRequest as AIRequest, PostProcessResponse as AIResponse
 from src.api.websocket_stream import streamer
 from src.api.job_queue import job_queue, JobInfo
-from src.monitoring import start_session_monitoring, record_preview_generated, record_session_completed, record_asr_success
+from src.monitoring import start_session_monitoring, record_preview_generated, record_session_completed, record_asr_success, start_processing, end_processing
 
 
 # Request/Response models
@@ -371,6 +371,9 @@ async def stop_session(session_id: str):
     session = sessions[session_id]
     session["status"] = "stopped"
 
+    # Start timing for throughput monitoring
+    start_processing(session_id)
+
     # Power Mode: Detect app category and apply config
     app_info = session.get("app_info", "")
     app_category = detect_app_category(app_info)
@@ -499,6 +502,10 @@ async def stop_session(session_id: str):
         logger.info(f"✅ Final transcript ({len(final_transcript)} chars)")
     else:
         final_transcript = ""
+
+    # Record throughput
+    total_samples = sum(len(c) for c in session["audio_chunks"])
+    end_processing(session_id, total_samples)
 
     # Record session completion
     record_session_completed(session_id, success=True)
