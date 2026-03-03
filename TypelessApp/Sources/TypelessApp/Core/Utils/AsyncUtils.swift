@@ -6,7 +6,7 @@ import Foundation
 ///   - operation: The async operation to execute
 /// - Returns: The result of the operation, or nil if timed out
 func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async -> T?) async -> T? {
-    await withTaskGroup(of: T?.self) { group in
+    await withTaskGroup(of: T?.self) { group -> T? in
         // Add the actual operation
         group.addTask {
             await operation()
@@ -21,6 +21,10 @@ func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async -> T?) 
         // Return the first to complete
         let result = await group.next()
         group.cancelAll()
-        return result
+        // Flatten T?? to T?
+        if let result = result {
+            return result
+        }
+        return nil
     }
 }
