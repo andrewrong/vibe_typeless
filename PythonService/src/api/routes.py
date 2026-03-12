@@ -1201,10 +1201,10 @@ async def upload_audio_file(
     # Get file format from extension
     file_format = file.filename.split('.')[-1] if '.' in file.filename else None
 
-    if file_format not in ['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac']:
+    if file_format not in ['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac', 'opus']:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported audio format: {file_format}. Supported: WAV, MP3, M4A, FLAC, OGG, AAC"
+            detail=f"Unsupported audio format: {file_format}. Supported: WAV, MP3, M4A, FLAC, OGG, AAC, OPUS"
         )
 
     # Read file data
@@ -1411,10 +1411,10 @@ async def upload_long_audio(
     # Get file format from extension
     file_format = file.filename.split('.')[-1] if '.' in file.filename else None
 
-    if file_format not in ['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac']:
+    if file_format not in ['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac', 'opus']:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported audio format: {file_format}. Supported: WAV, MP3, M4A, FLAC, OGG, AAC"
+            detail=f"Unsupported audio format: {file_format}. Supported: WAV, MP3, M4A, FLAC, OGG, AAC, OPUS"
         )
 
     # Read file data

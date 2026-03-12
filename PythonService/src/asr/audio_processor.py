@@ -4,6 +4,10 @@ Handle audio file loading, conversion, and preprocessing
 """
 
 import io
+import os
+import subprocess
+import tempfile
+import logging
 import numpy as np
 from typing import Tuple, Optional
 from pydub import AudioSegment
@@ -11,16 +15,19 @@ from pydub.utils import make_chunks
 
 from .model import AudioConfig
 
+logger = logging.getLogger(__name__)
+
 
 class AudioProcessor:
     """
     Audio file processing utilities
 
     Supports:
-    - Loading audio files (WAV, MP3, M4A, etc.)
+    - Loading audio files (WAV, MP3, M4A, OGG, OPUS, etc.)
     - Converting to required format (16kHz/16bit mono)
     - Chunking audio for streaming
     - VAD preprocessing (future)
+    - WhatsApp OPUS audio support
     """
 
     def __init__(self, config: Optional[AudioConfig] = None):
@@ -41,10 +48,12 @@ class AudioProcessor:
         """
         Load audio file from path or bytes
 
+        Supports formats: WAV, MP3, M4A, OGG, OPUS (including WhatsApp)
+
         Args:
             file_path: Path to audio file
             file_data: Audio file data as bytes
-            file_format: Format of audio data (required if file_data provided)
+            file_format: Format of audio data (auto-detected if file_path provided)
 
         Returns:
             AudioSegment object
@@ -53,14 +62,130 @@ class AudioProcessor:
             # Load from bytes
             if not file_format:
                 raise ValueError("file_format must be provided when loading from bytes")
+
+            # Handle OPUS format
+            if file_format.lower() in ['opus', 'ogg']:
+                return self._load_opus_data(file_data)
+
             audio = AudioSegment.from_file(io.BytesIO(file_data), format=file_format)
         elif file_path:
-            # Load from file path
+            # Auto-detect format from file extension
+            ext = os.path.splitext(file_path)[1].lower()
+
+            # Handle OPUS files
+            if ext in ['.opus', '.ogg', '.oga']:
+                return self._load_opus_file(file_path)
+
             audio = AudioSegment.from_file(file_path)
         else:
             raise ValueError("Either file_path or file_data must be provided")
 
         return audio
+
+    def _load_opus_file(self, file_path: str) -> AudioSegment:
+        """
+        Load OPUS audio file using ffmpeg
+
+        WhatsApp audio files are typically OPUS codec in OGG container.
+        This method uses ffmpeg to decode them.
+
+        Args:
+            file_path: Path to OPUS file
+
+        Returns:
+            AudioSegment object
+        """
+        try:
+            # First, try pydub with ffmpeg (should work if ffmpeg is installed)
+            return AudioSegment.from_file(file_path, format='opus')
+        except Exception as e:
+            logger.debug(f"pydub opus loading failed: {e}, trying ffmpeg directly...")
+
+            # Fallback: use ffmpeg directly to convert to WAV
+            return self._convert_opus_with_ffmpeg(file_path=file_path)
+
+    def _load_opus_data(self, file_data: bytes) -> AudioSegment:
+        """
+        Load OPUS audio data from bytes
+
+        Args:
+            file_data: OPUS audio data as bytes
+
+        Returns:
+            AudioSegment object
+        """
+        try:
+            # Try pydub first
+            return AudioSegment.from_file(io.BytesIO(file_data), format='opus')
+        except Exception as e:
+            logger.debug(f"pydub opus loading failed: {e}, trying ffmpeg directly...")
+
+            # Fallback: save to temp file and convert
+            with tempfile.NamedTemporaryFile(suffix='.opus', delete=False) as temp_in:
+                temp_in.write(file_data)
+                temp_in_path = temp_in.name
+
+            try:
+                return self._convert_opus_with_ffmpeg(file_path=temp_in_path)
+            finally:
+                os.unlink(temp_in_path)
+
+    def _convert_opus_with_ffmpeg(
+        self,
+        file_path: Optional[str] = None,
+        file_data: Optional[bytes] = None
+    ) -> AudioSegment:
+        """
+        Convert OPUS to WAV using ffmpeg
+
+        Args:
+            file_path: Path to OPUS file
+            file_data: OPUS data as bytes (alternative to file_path)
+
+        Returns:
+            AudioSegment object
+        """
+        # Create temp files
+        if file_data:
+            with tempfile.NamedTemporaryFile(suffix='.opus', delete=False) as temp_in:
+                temp_in.write(file_data)
+                input_path = temp_in.name
+        else:
+            input_path = file_path
+
+        output_path = tempfile.mktemp(suffix='.wav')
+
+        try:
+            # Use ffmpeg to convert
+            cmd = [
+                'ffmpeg',
+                '-y',  # Overwrite output
+                '-i', input_path,
+                '-ar', '16000',  # Resample to 16kHz
+                '-ac', '1',      # Convert to mono
+                '-c:a', 'pcm_s16le',  # 16-bit PCM
+                output_path
+            ]
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg conversion failed: {result.stderr}")
+
+            # Load the converted WAV file
+            audio = AudioSegment.from_file(output_path, format='wav')
+            return audio
+
+        finally:
+            # Cleanup
+            if file_data and input_path != file_path:
+                os.unlink(input_path)
+            os.unlink(output_path)
 
     def convert_to_asr_format(
         self,
