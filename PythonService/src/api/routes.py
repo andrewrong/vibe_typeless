@@ -100,6 +100,7 @@ from src.postprocess.cloud_llm import ProviderConfig, create_provider_from_env
 from src.postprocess.ai_processor import AIPostProcessor, PostProcessRequest as AIRequest, PostProcessResponse as AIResponse
 from src.api.websocket_stream import streamer
 from src.api.job_queue import job_queue, JobInfo
+from src.monitoring import start_session_monitoring, record_preview_generated, record_session_completed, record_asr_success, start_processing, end_processing
 
 
 # Request/Response models
@@ -245,6 +246,9 @@ async def start_session(request: SessionStartRequest = None):
         "sample_rate": sample_rate  # Store the sample rate for this session
     }
 
+    # Start monitoring this session
+    start_session_monitoring(session_id)
+
     logger.info(f"📱 Session started: {session_id[:8]}..., sample_rate={sample_rate}Hz")
 
     # Log app info for Power Mode
@@ -282,14 +286,14 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
     receive_timestamp = time.time()
     chunk_size = len(request)
     chunks_received = session["chunks_received"]
-    logger.info(f"📥 [BackendAudio] Received chunk #{chunks_received}: {chunk_size} bytes at {receive_timestamp:.3f}")
+    logger.debug(f"📥 [BackendAudio] Received chunk #{chunks_received}: {chunk_size} bytes at {receive_timestamp:.3f}")
 
     # Convert bytes to numpy array
     try:
         audio_array = np.frombuffer(request, dtype=np.int16)
         sample_rate = session.get("sample_rate", 16000)
         duration_ms = len(audio_array) / sample_rate * 1000
-        logger.info(f"📥 [BackendAudio] Converted to {len(audio_array)} samples @ {sample_rate}Hz ({duration_ms:.1f}ms audio)")
+        logger.debug(f"📥 [BackendAudio] Converted to {len(audio_array)} samples @ {sample_rate}Hz ({duration_ms:.1f}ms audio)")
     except Exception as e:
         logger.error(f"Failed to convert audio data: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid audio data: {e}")
@@ -306,7 +310,7 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
         # Only transcribe recent chunks (maintain data locality, O(1) complexity)
         RECENT_CHUNKS_FOR_PREVIEW = 5
         recent_chunks = session["audio_chunks"][-RECENT_CHUNKS_FOR_PREVIEW:]
-        logger.info(f"🔄 Real-time preview: transcribing {len(recent_chunks)} recent chunks (total received: {session['chunks_received']})")
+        logger.debug(f"🔄 Real-time preview: transcribing {len(recent_chunks)} recent chunks (total received: {session['chunks_received']})")
 
         try:
             # Combine only recent chunks for preview (fast)
@@ -331,12 +335,15 @@ async def send_audio(session_id: str, request: bytes = Body(..., media_type='app
                 # Apply dictionary for technical terms
                 partial_transcript = personal_dictionary.apply(partial_transcript)
 
-            logger.info(f"📝 Preview transcript: '{partial_transcript[:50]}...'")
+            logger.debug(f"📝 Preview transcript: '{partial_transcript[:50]}...'")
+
+            # Record preview generation for latency tracking
+            record_preview_generated(session_id)
 
         except Exception as e:
             logger.error(f"Preview transcription failed: {e}")
 
-    logger.info(f"Session {session_id[:8]}... has {session['chunks_received']} chunks, total audio: {sum(len(c) for c in session['audio_chunks'])} samples")
+    logger.debug(f"Session {session_id[:8]}... has {session['chunks_received']} chunks, total audio: {sum(len(c) for c in session['audio_chunks'])} samples")
 
     return AudioTranscriptResponse(
         partial_transcript=partial_transcript,
@@ -364,6 +371,9 @@ async def stop_session(session_id: str):
     session = sessions[session_id]
     session["status"] = "stopped"
 
+    # Start timing for throughput monitoring
+    start_processing(session_id)
+
     # Power Mode: Detect app category and apply config
     app_info = session.get("app_info", "")
     app_category = detect_app_category(app_info)
@@ -383,17 +393,17 @@ async def stop_session(session_id: str):
         source_sample_rate = session.get("sample_rate", 16000)
         processor = None
         if source_sample_rate != 16000:
-            logger.info(f"🎛️ [BackendAudio] Resampling from {source_sample_rate}Hz to 16000Hz...")
+            logger.debug(f"🎛️ [BackendAudio] Resampling from {source_sample_rate}Hz to 16000Hz...")
             from src.asr.audio_processor import AudioProcessor
             processor = AudioProcessor()
             # Convert to float32 for processing
             audio_float = all_audio.astype(np.float32) / 32768.0
             resampled = processor.resample_audio(audio_float, source_sample_rate, 16000)
             all_audio = (resampled * 32767).astype(np.int16)
-            logger.info(f"✅ [BackendAudio] Resampled: {len(session['audio_chunks'])} chunks @ {source_sample_rate}Hz → {len(all_audio)} samples @ 16000Hz")
+            logger.debug(f"✅ [BackendAudio] Resampled: {len(session['audio_chunks'])} chunks @ {source_sample_rate}Hz → {len(all_audio)} samples @ 16000Hz")
 
         # Apply audio processing pipeline (VAD → Enhancement → Segmentation)
-        logger.info("🎛️ Applying audio processing pipeline...")
+        logger.debug("🎛️ Applying audio processing pipeline...")
 
         # Create audio pipeline
         # TEMPORARILY DISABLE VAD to test if it causes audio loss at beginning
@@ -405,61 +415,60 @@ async def stop_session(session_id: str):
         )
 
         # Process audio
-        logger.info(f"🎛️ [BackendAudio] Starting pipeline processing...")
-        logger.info(f"🎛️ [BackendAudio] Original audio: {len(all_audio)} samples @ 16000Hz ({len(all_audio)/16000:.2f}s)")
+        logger.debug(f"🎛️ [BackendAudio] Starting pipeline processing...")
+        logger.debug(f"🎛️ [BackendAudio] Original audio: {len(all_audio)} samples @ 16000Hz ({len(all_audio)/16000:.2f}s)")
 
         processed_segments, stats = pipeline.process(all_audio)
 
-        logger.info(f"🎛️ [BackendAudio] Pipeline complete:")
-        logger.info(f"   - Original: {stats['original_samples']} samples ({stats['original_duration']:.2f}s)")
-        logger.info(f"   - Segments after VAD: {stats['segments']}")
-        logger.info(f"   - Speech samples: {stats['speech_samples']} ({stats['speech_samples']/16000:.2f}s)")
-        logger.info(f"   - Silence removed: {stats['silence_removed']} samples ({stats['silence_removed'] / 16000:.2f}s)")
-        logger.info(f"   - Audio retained: {stats['speech_samples']/max(stats['original_samples'], 1)*100:.1f}%")
+        logger.debug(f"🎛️ [BackendAudio] Pipeline complete:")
+        logger.debug(f"   - Original: {stats['original_samples']} samples ({stats['original_duration']:.2f}s)")
+        logger.debug(f"   - Segments after VAD: {stats['segments']}")
+        logger.debug(f"   - Speech samples: {stats['speech_samples']} ({stats['speech_samples']/16000:.2f}s)")
+        logger.debug(f"   - Silence removed: {stats['silence_removed']} samples ({stats['silence_removed'] / 16000:.2f}s)")
+        logger.debug(f"   - Audio retained: {stats['speech_samples']/max(stats['original_samples'], 1)*100:.1f}%")
 
         # Transcribe each segment and combine
         transcripts = []
-        logger.info(f"📝 [BackendAudio] Starting transcription of {len(processed_segments)} segments...")
+        logger.debug(f"📝 [BackendAudio] Starting transcription of {len(processed_segments)} segments...")
 
         for i, segment in enumerate(processed_segments):
             segment_duration = len(segment) / 16000
-            logger.info(f"📝 [BackendAudio] Transcribing segment {i+1}/{len(processed_segments)}: {len(segment)} samples ({segment_duration:.2f}s)")
+            logger.debug(f"📝 [BackendAudio] Transcribing segment {i+1}/{len(processed_segments)}: {len(segment)} samples ({segment_duration:.2f}s)")
 
             segment_transcript = model.transcribe(segment, language="auto")
-            logger.info(f"📝 [BackendAudio] Segment {i+1} result: '{segment_transcript[:50] if len(segment_transcript) > 50 else segment_transcript}'...")
+            logger.debug(f"📝 [BackendAudio] Segment {i+1} result: '{segment_transcript[:50] if len(segment_transcript) > 50 else segment_transcript}'...")
 
             if segment_transcript:
                 transcripts.append(segment_transcript)
 
-        logger.info(f"📝 [BackendAudio] Transcription complete: {len(transcripts)}/{len(processed_segments)} segments produced text")
+        logger.debug(f"📝 [BackendAudio] Transcription complete: {len(transcripts)}/{len(processed_segments)} segments produced text")
 
         # Combine transcripts
         final_transcript = " ".join(transcripts).strip()
-        logger.info(f"📝 Combined transcript ({len(final_transcript)} chars): '{final_transcript}'")
+        logger.debug(f"📝 Combined transcript ({len(final_transcript)} chars): '{final_transcript}'")
 
         # Apply Power Mode configuration
         if final_transcript:
             # Apply intelligent punctuation correction
             if power_config['add_punctuation']:
-                logger.info(f"🔧 Applying punctuation correction ({len(final_transcript)} chars)...")
-                logger.info(f"   Processor has punctuation_corrector: {processor is not None and hasattr(processor, 'punctuation_corrector')}")
+                logger.debug(f"🔧 Applying punctuation correction ({len(final_transcript)} chars)...")
                 if processor is not None and hasattr(processor, 'punctuation_corrector'):
                     before_punct = final_transcript
                     final_transcript = processor.punctuation_corrector.correct(final_transcript)
-                    logger.info(f"✅ After punctuation ({len(final_transcript)} chars): '{final_transcript}'")
+                    logger.debug(f"✅ After punctuation ({len(final_transcript)} chars)")
                     if len(final_transcript) < len(before_punct):
-                        logger.error(f"⚠️ Text got shorter! Before: {len(before_punct)}, After: {len(final_transcript)}")
+                        logger.warning(f"⚠️ Text got shorter! Before: {len(before_punct)}, After: {len(final_transcript)}")
                 else:
                     logger.warning("⚠️ processor.punctuation_corrector not found, skipping punctuation correction")
 
             # Apply personal dictionary (especially for technical terms)
             if power_config['technical_terms']:
-                logger.info(f"🔧 Applying dictionary ({len(final_transcript)} chars)...")
+                logger.debug(f"🔧 Applying dictionary ({len(final_transcript)} chars)...")
                 before_dict = final_transcript
                 final_transcript = personal_dictionary.apply(final_transcript)
-                logger.info(f"✅ After dictionary ({len(final_transcript)} chars): '{final_transcript}'")
+                logger.debug(f"✅ After dictionary ({len(final_transcript)} chars)")
                 if len(final_transcript) < len(before_dict):
-                    logger.error(f"⚠️ Text got shorter! Before: {len(before_dict)}, After: {len(final_transcript)}")
+                    logger.warning(f"⚠️ Text got shorter! Before: {len(before_dict)}, After: {len(final_transcript)}")
 
             # Apply AI post-processing for text enhancement (NEW)
             # Check if AI processing is enabled via .env file
@@ -488,12 +497,19 @@ async def stop_session(session_id: str):
 
                 except Exception as e:
                     logger.warning(f"⚠️ AI post-processing failed: {e}")
-                    logger.warning(f"   Falling back to rule-based result")
                     # Keep original text if AI processing fails
 
-        logger.info(f"✅ Final transcript: '{final_transcript}'")
+        logger.info(f"✅ Final transcript ({len(final_transcript)} chars)")
     else:
         final_transcript = ""
+
+    # Record throughput
+    total_samples = sum(len(c) for c in session["audio_chunks"])
+    end_processing(session_id, total_samples)
+
+    # Record session completion
+    record_session_completed(session_id, success=True)
+    record_asr_success(success=True)
 
     # Clean up session
     total_chunks = session["chunks_received"]
@@ -983,7 +999,7 @@ async def apply_postprocessing(
     if not text or mode == "none":
         return None, None
 
-    logger.info(f"📝 Applying post-processing (mode={mode})...")
+    logger.debug(f"📝 Applying post-processing (mode={mode})...")
 
     processed_transcript = None
     postprocess_stats = None
@@ -993,7 +1009,7 @@ async def apply_postprocessing(
         result = processor.process(text, mode=mode)
         processed_transcript = result.processed
         postprocess_stats = result.stats
-        logger.info(f"   Rule-based processing complete: {postprocess_stats.get('total_changes', 0)} changes")
+        logger.debug(f"   Rule-based processing complete: {postprocess_stats.get('total_changes', 0)} changes")
 
     # Step 2: For advanced mode, also apply AI enhancement
     if mode == "advanced" and processed_transcript:
@@ -1013,7 +1029,7 @@ async def apply_postprocessing(
             else:
                 ai_model = None
 
-            logger.info(f"🤖 Applying AI enhancement (provider={ai_provider})...")
+            logger.debug(f"🤖 Applying AI enhancement (provider={ai_provider})...")
 
             ai_processor = AIPostProcessor(timeout=60, enable_hotspot_pool=True)
             ai_request = PostProcessRequest(
@@ -1029,18 +1045,18 @@ async def apply_postprocessing(
                 postprocess_stats["ai_enhanced"] = True
                 postprocess_stats["ai_provider"] = ai_provider
                 postprocess_stats["ai_model"] = ai_response.model
-                logger.info(f"   AI enhancement complete ({len(ai_response.processed)} chars)")
+                logger.debug(f"   AI enhancement complete ({len(ai_response.processed)} chars)")
             else:
                 logger.warning("   AI enhancement returned empty, keeping rule-based result")
                 postprocess_stats["ai_enhanced"] = False
 
         except Exception as e:
-            logger.error(f"   AI enhancement failed: {e}, using rule-based result")
+            logger.warning(f"   AI enhancement failed: {e}, using rule-based result")
             postprocess_stats["ai_enhanced"] = False
             postprocess_stats["ai_error"] = str(e)
             # Keep rule-based result as fallback
 
-    logger.info(f"   Post-processing complete: {postprocess_stats.get('total_changes', 0)} changes")
+    logger.debug(f"   Post-processing complete: {postprocess_stats.get('total_changes', 0)} changes")
     return processed_transcript, postprocess_stats
 
 
@@ -1360,7 +1376,7 @@ def smart_split_segments(segments: List[np.ndarray],
 
             logger.debug(f"   Smart split at {best_split/sample_rate:.1f}s (energy={min_energy:.1f})")
 
-    logger.info(f"   Smart split: {len(segments)} → {len(result)} segments "
+    logger.debug(f"   Smart split: {len(segments)} → {len(result)} segments "
                 f"(target {min_duration}-{max_duration}s)")
     return result
 
@@ -1440,7 +1456,7 @@ async def upload_long_audio(
         )
 
         processed_segments, stats = pipeline.process(audio_array)
-        logger.info(f"   AudioPipeline: {stats['segments']} segments, removed {stats['silence_removed'] / 16000:.2f}s silence")
+        logger.debug(f"   AudioPipeline: {stats['segments']} segments, removed {stats['silence_removed'] / 16000:.2f}s silence")
 
         # Smart split long segments at natural pause points (energy-based)
         # This balances sentence integrity with model performance
@@ -1456,7 +1472,7 @@ async def upload_long_audio(
         transcripts = []
 
         for i, segment in enumerate(processed_segments):
-            logger.info(f"   Transcribing segment {i+1}/{len(processed_segments)} ({len(segment)} samples)")
+            logger.debug(f"   Transcribing segment {i+1}/{len(processed_segments)} ({len(segment)} samples)")
             segment_transcript = model.transcribe(segment, language=language)
             if segment_transcript:
                 transcripts.append(segment_transcript)

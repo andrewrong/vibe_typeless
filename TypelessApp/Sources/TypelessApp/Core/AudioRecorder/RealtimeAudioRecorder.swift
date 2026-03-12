@@ -124,12 +124,12 @@ class RealtimeAudioRecorder: NSObject {
     private var isTapInstalled = false
 
     private func setupAudioEngine() {
-        NSLog("🎤 Setting up new audio engine...")
+        TLogInfo("🎤 Setting up audio engine...")
 
         // Log audio device info for debugging
         #if os(macOS)
         if let defaultDevice = AVCaptureDevice.default(for: .audio) {
-            NSLog("🎤 Default input device: \(defaultDevice.localizedName)")
+            TLogInfo("🎤 Input device: \(defaultDevice.localizedName)")
         }
         #endif
 
@@ -139,7 +139,7 @@ class RealtimeAudioRecorder: NSObject {
                 oldEngine.stop()
             }
             oldEngine.inputNode.removeTap(onBus: 0)
-            NSLog("🎤 Cleaned up old engine")
+            TLogDebug("Cleaned up old engine")
         }
 
         let engine = AVAudioEngine()
@@ -149,19 +149,17 @@ class RealtimeAudioRecorder: NSObject {
         // Get the current input format - use inputFormat to get the actual hardware input format
         let inputFormat = engine.inputNode.inputFormat(forBus: 0)
 
-        NSLog("🎤 Hardware input format: \(inputFormat)")
-        NSLog("🎤 Sample rate: \(inputFormat.sampleRate) Hz")
-        NSLog("🎤 Channels: \(inputFormat.channelCount)")
+        TLogDebug("Hardware format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
         // Check if format is valid
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            NSLog("❌ Invalid input format")
+            TLogError("Invalid input format")
             return
         }
 
         // Update sample rate to match hardware
         self.sampleRate = inputFormat.sampleRate
-        NSLog("🎤 Updated sampleRate to \(self.sampleRate) Hz")
+        TLogInfo("🎤 Sample rate: \(Int(self.sampleRate))Hz")
 
         // Install tap with nil format - use hardware format, backend will handle resampling
         engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, time in
@@ -170,13 +168,13 @@ class RealtimeAudioRecorder: NSObject {
         }
 
         isTapInstalled = true
-        NSLog("✅ Audio engine setup complete (tap installed with hardware format)")
+        TLogDebug("Audio engine setup complete")
     }
 
     /// Clean up engine resources - called before creating new engine
     private func cleanupEngine() {
         guard let engine = audioEngine else { return }
-        NSLog("🎤 Cleaning up audio engine...")
+        TLogDebug("Cleaning up audio engine...")
         engine.inputNode.removeTap(onBus: 0)
         if engine.isRunning {
             engine.stop()
@@ -184,7 +182,7 @@ class RealtimeAudioRecorder: NSObject {
         audioEngine = nil
         inputNode = nil
         isTapInstalled = false
-        NSLog("✅ Audio engine cleaned up")
+        TLogDebug("Audio engine cleaned up")
     }
 
     private var firstBufferTime: Date?
@@ -343,17 +341,17 @@ class RealtimeAudioRecorder: NSObject {
     /// Start recording audio with ZERO latency
     func startRecording(sessionReady: Bool = false) async throws {
         guard !isRecording else {
-            NSLog("⚠️ Already recording, ignoring start request")
+            TLogDebug("Already recording, ignoring start request")
             return
         }
 
         // Check microphone permission first
         let authStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         if authStatus != .authorized {
-            NSLog("🎤 Requesting microphone permission...")
+            TLogInfo("🎤 Requesting microphone permission...")
             let granted = await requestPermission()
             if !granted {
-                NSLog("❌ Microphone permission denied")
+                TLogError("Microphone permission denied")
                 throw AudioRecorderError.notAuthorized
             }
         }
@@ -361,37 +359,28 @@ class RealtimeAudioRecorder: NSObject {
         // Clean up any existing engine
         cleanupEngine()
 
-        // IMPORTANT: Configure audio session for recording to force HFP mode on Bluetooth
-        #if os(macOS)
-        // On macOS, we need to ensure the default input device is set correctly
-        // Sometimes the system reports the wrong format before the engine starts
-        NSLog("🎤 Configuring audio for recording...")
-        #endif
-
         // Create new engine
         setupAudioEngine()
 
         guard let engine = audioEngine else {
-            NSLog("❌ Audio engine not available")
+            TLogError("Audio engine not available")
             throw AudioRecorderError.configurationFailed
         }
 
         // Start engine - this will activate the microphone and trigger HFP mode switch
         do {
             try engine.start()
-            NSLog("✅ Audio engine started")
+            TLogInfo("✅ Audio engine started")
 
             // After starting, re-check the actual input format
-            // The format may have changed after the engine started (HFP mode activation)
-            // Wait a bit for Bluetooth HFP mode to fully activate
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
             let actualFormat = engine.inputNode.inputFormat(forBus: 0)
             if actualFormat.sampleRate != self.sampleRate {
-                NSLog("🎤 Sample rate changed after start: \(self.sampleRate)Hz → \(actualFormat.sampleRate)Hz")
+                TLogInfo("🎤 Sample rate adjusted: \(Int(self.sampleRate))Hz → \(Int(actualFormat.sampleRate))Hz")
                 self.sampleRate = actualFormat.sampleRate
             }
         } catch {
-            NSLog("❌ Failed to start audio engine: \(error)")
+            TLogError("Failed to start audio engine: \(error)")
             engineStartError = error
             throw AudioRecorderError.recordingFailed(error)
         }
@@ -409,7 +398,7 @@ class RealtimeAudioRecorder: NSObject {
         isPrewarming = true
         isReadyToSend = sessionReady
 
-        NSLog("🎤 Recording started at \(Int(sampleRate))Hz, waiting for first buffer...")
+        TLogInfo("🎤 Recording started at \(Int(sampleRate))Hz")
     }
 
     /// Complete the recording start process (called when first audio buffer arrives)

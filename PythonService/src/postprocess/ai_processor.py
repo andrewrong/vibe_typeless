@@ -68,8 +68,7 @@ def protect_financial_terms(text: str) -> Tuple[str, Dict[str, str]]:
         protected_text = pattern.sub(replace_match, protected_text)
 
     if term_map:
-        logger.info(f"🛡️  Protected {len(term_map)} financial terms")
-        logger.debug(f"Protected terms: {list(term_map.values())}")
+        logger.debug(f"🛡️  Protected {len(term_map)} financial terms: {list(term_map.values())}")
 
     return protected_text, term_map
 
@@ -91,7 +90,7 @@ def restore_financial_terms(text: str, term_map: Dict[str, str]) -> str:
         restored_text = restored_text.replace(placeholder, original_term)
 
     if term_map:
-        logger.info(f"🔄 Restored {len(term_map)} financial terms")
+        logger.debug(f"🔄 Restored {len(term_map)} financial terms")
 
     return restored_text
 
@@ -331,19 +330,18 @@ class AIPostProcessor:
         client_kwargs = {"api_key": api_key}
         if self.settings.OPENAI_BASE_URL:
             client_kwargs["base_url"] = self.settings.OPENAI_BASE_URL
-            logger.info(f"Using custom OpenAI base_url: {self.settings.OPENAI_BASE_URL}")
+            logger.debug(f"Using custom OpenAI base_url: {self.settings.OPENAI_BASE_URL}")
             # OpenRouter 推荐添加额外 headers
             client_kwargs["default_headers"] = {
                 "HTTP-Referer": "https://typeless.local",  # 可选：你的应用 URL
                 "X-Title": "Typeless",  # 可选：你的应用名称
             }
-            logger.info("Added OpenRouter recommended headers")
+            logger.debug("Added OpenRouter recommended headers")
 
         client = OpenAI(**client_kwargs)
         prompt = self._build_prompt(text)
 
-        logger.info(f"Calling OpenAI API: {model}")
-        logger.debug(f"API Key prefix: {api_key[:10]}...{api_key[-4:]}")
+        logger.debug(f"Calling OpenAI API: {model}")
 
         try:
             response = client.chat.completions.create(
@@ -441,7 +439,7 @@ class AIPostProcessor:
         # 检查是否是 Qwen 3.5 模型（需要禁用思考模式）
         is_qwen35 = "qwen3.5" in model.lower()
         if is_qwen35:
-            logger.info("🔧 Qwen 3.5 detected, disabling thinking mode")
+            logger.debug("🔧 Qwen 3.5 detected, disabling thinking mode")
 
         payload = {
             "model": model,

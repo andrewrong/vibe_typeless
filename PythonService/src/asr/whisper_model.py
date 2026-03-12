@@ -176,7 +176,7 @@ class WhisperASR:
             logger.warning(f"Audio too short: {len(audio)} samples < {min_samples}")
             return ""
 
-        logger.info(f"Transcribing {len(audio)} samples, dtype={audio.dtype}, range=[{audio.min()}, {audio.max()}]")
+        logger.debug(f"Transcribing {len(audio)} samples, dtype={audio.dtype}")
 
         # Save to temporary file
         with tempfile.NamedTemporaryFile(
@@ -189,11 +189,9 @@ class WhisperASR:
         try:
             # Convert audio to correct format
             preprocessed = self.preprocess_audio(audio)
-            logger.info(f"Preprocessed: shape={preprocessed.shape}, dtype={preprocessed.dtype}, range=[{preprocessed.min()}, {preprocessed.max()}]")
 
             # Convert back to int16 for WAV file
             audio_int16 = (preprocessed * 32767).astype(np.int16)
-            logger.info(f"Int16: shape={audio_int16.shape}, dtype={audio_int16.dtype}, range=[{audio_int16.min()}, {audio_int16.max()}]")
 
             # Write WAV file manually
             import wave
@@ -207,11 +205,9 @@ class WhisperASR:
                 # Write audio data
                 wav_file.writeframes(audio_int16.tobytes())
 
-            logger.info(f"WAV file written to {temp_path}")
-
             # Transcribe with language specified
             result = self.transcribe_file(temp_path, language=language)
-            logger.info(f"Transcription result: '{result}'")
+            logger.debug(f"Transcription result: '{result}'")
             return result
 
         except Exception as e:

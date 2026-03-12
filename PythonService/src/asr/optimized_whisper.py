@@ -294,7 +294,7 @@ class OptimizedWhisperASR:
             logger.warning("Empty audio array")
             return ""
 
-        logger.info(f"Transcribing {len(audio)} samples with VAD={self.use_vad}")
+        logger.debug(f"Transcribing {len(audio)} samples with VAD={self.use_vad}")
 
         audio_to_transcribe = audio
 
@@ -312,7 +312,7 @@ class OptimizedWhisperASR:
                     total_speech_samples = sum(len(seg.audio) for seg in speech_segments)
                     speech_ratio = total_speech_samples / len(audio)
 
-                    logger.info(f"VAD detected {len(speech_segments)} speech segments, {speech_ratio:.1%} of audio")
+                    logger.debug(f"VAD detected {len(speech_segments)} speech segments, {speech_ratio:.1%} of audio")
 
                     # Only use VAD result if speech ratio is reasonable (>10%)
                     if speech_ratio > 0.1:
@@ -375,7 +375,7 @@ class OptimizedWhisperASR:
                 )
 
                 transcript = result.get("text", "").strip()
-                logger.info(f"Transcription result: '{transcript}'")
+                logger.debug(f"Transcription result: '{transcript}'")
                 return transcript
 
             finally:
