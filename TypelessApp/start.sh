@@ -21,6 +21,21 @@ fi
 echo "🚀 启动 Typeless Swift 应用..."
 echo ""
 
+# 检查是否已有实例在运行，如果有则杀掉
+EXISTING_PIDS=$(pgrep -f "TypelessApp" | grep -v grep | grep -v $$ || true)
+if [ -n "$EXISTING_PIDS" ]; then
+    echo "⚠️  检测到已有 TypelessApp 实例在运行，正在关闭..."
+    echo "$EXISTING_PIDS" | xargs kill 2>/dev/null || true
+    sleep 1
+    # 强制清理残留的进程
+    REMAINING=$(pgrep -f "TypelessApp" | grep -v grep | grep -v $$ || true)
+    if [ -n "$REMAINING" ]; then
+        echo "$REMAINING" | xargs kill -9 2>/dev/null || true
+    fi
+    echo "✅ 已清理旧实例"
+    echo ""
+fi
+
 # 创建运行时目录
 mkdir -p runtime/logs runtime/tmp
 
