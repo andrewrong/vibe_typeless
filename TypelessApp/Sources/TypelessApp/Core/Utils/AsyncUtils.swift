@@ -1,5 +1,10 @@
 import Foundation
 
+/// Timeout error for async operations
+struct TimeoutError: Error {
+    let duration: TimeInterval
+}
+
 /// Execute an async operation with a timeout
 /// - Parameters:
 ///   - seconds: Timeout duration in seconds
@@ -21,6 +26,10 @@ func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async -> T?) 
         // Return the first to complete
         let result = await group.next()
         group.cancelAll()
+
+        // Wait for all tasks to complete (or be cancelled) to avoid leaks
+        await group.waitForAll()
+
         // Flatten T?? to T?
         if let result = result {
             return result

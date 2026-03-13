@@ -474,12 +474,17 @@ async def stop_session(session_id: str):
             # Check if AI processing is enabled via .env file
             from src.config import settings
 
-            if settings.ENABLE_AI_POSTPROCESS and len(final_transcript) > 10:  # Only AI process if text > 10 chars
-                try:
-                    logger.info(f"🤖 Applying AI post-processing ({len(final_transcript)} chars)...")
+            # Calculate audio duration
+            audio_duration_seconds = len(all_audio) / 16000.0 if session["audio_chunks"] else 0
 
-                    # Create AI processor with hotspot pool enabled
-                    ai_processor = AIPostProcessor(enable_hotspot_pool=True)
+            # Skip AI processing for long audio (>20s) to prevent timeout
+            # Long audio processing already takes too long, adding AI would exceed timeout
+            if settings.ENABLE_AI_POSTPROCESS and len(final_transcript) > 10 and audio_duration_seconds <= 20:
+                try:
+                    logger.info(f"🤖 Applying AI post-processing ({len(final_transcript)} chars, audio: {audio_duration_seconds:.1f}s)...")
+
+                    # Create AI processor with shorter timeout for stop endpoint
+                    ai_processor = AIPostProcessor(timeout=15, enable_hotspot_pool=True)
 
                     # Create request (use provider from .env)
                     ai_request = AIRequest(
@@ -498,6 +503,8 @@ async def stop_session(session_id: str):
                 except Exception as e:
                     logger.warning(f"⚠️ AI post-processing failed: {e}")
                     # Keep original text if AI processing fails
+            elif settings.ENABLE_AI_POSTPROCESS and audio_duration_seconds > 20:
+                logger.info(f"⏭️ Skipping AI post-processing for long audio ({audio_duration_seconds:.1f}s > 20s)")
 
         logger.info(f"✅ Final transcript ({len(final_transcript)} chars)")
     else:
