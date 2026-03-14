@@ -32,7 +32,7 @@ class HotspotPool:
         name="金融",
         description="金融、投资、交易相关术语",
         terms=[
-            # 期权术语
+            # 期权术语（英文）
             "sell put", "sell call", "buy put", "buy call",
             "covered call", "naked put", "cash secured put",
             "protective put", "bull call spread", "bear put spread",
@@ -42,18 +42,47 @@ class HotspotPool:
             "strike price", "expiration", "premium",
             "in the money", "at the money", "out of the money",
             "ITM", "ATM", "OTM",
-            # 交易术语
+            # 期权术语（中文）
+            "行权价", "执行价", "到期日", "到期", "权利金", "期权费",
+            "看涨期权", "看跌期权", "认购期权", "认沽期权",
+            "备兑开仓", "裸卖", "保护性看跌", "牛市价差", "熊市价差",
+            "铁鹰策略", "蝶式策略", "跨式策略", "宽跨式策略",
+            "实值", "平值", "虚值", "内在价值", "时间价值", "时间衰减",
+            # 交易术语（英文）
             "long", "short", "bullish", "bearish",
             "dividend", "yield", "margin", "leverage",
             "equity", "volatility", "implied volatility", "IV",
             "support", "resistance", "trend line",
+            # 交易术语（中文）
+            "做多", "做空", "多头", "空头", "看涨", "看跌",
+            "股息", "分红", "收益率", "保证金", "杠杆", "杠杆倍数",
+            "股票", "持仓", "仓位", "头寸", "开仓", "平仓", "爆仓",
+            "波动率", "隐含波动率", "历史波动率", "波动",
+            "支撑位", "压力位", "阻力位", "趋势线", "通道",
             # 希腊字母
             "delta", "gamma", "theta", "vega", "rho",
-            # 金融产品
+            "德尔塔", "伽马", "西塔", "维加", "柔",
+            # 金融产品（英文）
             "ETF", "REITs", "IPO", "CPI", "PPI", "GDP", "PMI",
             "M1", "M2", "PE ratio", "PB ratio", "ROE", "EPS",
-            # 交易指令
+            # 金融产品（中文）
+            "指数基金", "房地产投资信托", "首次公开发行", "新股",
+            "市盈率", "市净率", "净资产收益率", "每股收益",
+            "消费者价格指数", "生产者价格指数", "国内生产总值", "采购经理指数",
+            # 交易指令（英文）
             "limit order", "market order", "stop loss", "take profit",
+            # 交易指令（中文）
+            "限价单", "市价单", "止损", "止盈", "止损单", "止盈单",
+            "买入", "卖出", "加仓", "减仓", "补仓", "全仓", "半仓",
+            # 技术分析
+            "K线", "阳线", "阴线", "十字星", "锤子线",
+            "MACD", "RSI", "KDJ", "布林带", "Bollinger Bands",
+            "移动平均线", "均线", "MA", "EMA", "SMA",
+            "成交量", "成交额", "换手率", "量比", "委比",
+            # 账户相关
+            "账户", "资金账户", "证券账户", "现金账户", "融资账户",
+            "可用资金", "可取资金", "冻结资金", "总资产", "总市值",
+            "当日盈亏", "浮动盈亏", "实现盈亏", "累计盈亏",
         ]
     )
 
@@ -189,8 +218,13 @@ class HotspotPool:
 """
             sections.append(section)
 
-        intro = """## 重要提示
-以下是专业术语热点池，请优先识别并保留这些术语的正确拼写，不要翻译或修改：
+        intro = """## 专业术语保护（最高优先级）
+以下术语必须完整保留，禁止翻译、改写或替换为同义词：
+- 金融术语：行权价、执行价、到期日、权利金、看涨期权、看跌期权、做多、做空等
+- 技术术语：Docker, Kubernetes, Python, React 等框架和工具名
+- 券商名称：IBKR, 盈透证券, 老虎证券, 富途等
+
+⚠️ 严禁修改上述术语，即使它们在语法上看起来不自然！
 """
 
         return intro + "\n".join(sections)
