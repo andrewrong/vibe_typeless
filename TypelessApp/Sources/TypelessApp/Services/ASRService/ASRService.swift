@@ -58,8 +58,10 @@ class ASRService: NSObject {
 
     // MARK: - Initialization
 
-    init(baseURL: String = "http://127.0.0.1:28111") {
-        self.baseURL = baseURL
+    init(baseURL: String? = nil) {
+        // Read from UserDefaults if no explicit baseURL provided
+        let savedURL = UserDefaults.standard.string(forKey: "typeless.serverURL")
+        self.baseURL = baseURL ?? savedURL ?? "http://127.0.0.1:28111"
 
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 60

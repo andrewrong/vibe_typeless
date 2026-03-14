@@ -49,8 +49,17 @@ echo "   模型缓存: $(pwd)/runtime/models"
 echo "   日志目录: $(pwd)/runtime/logs"
 echo ""
 
+# 检查是否启用局域网模式
+if [ "$1" = "--lan" ] || [ "$TYPELESS_LAN_MODE" = "1" ]; then
+    HOST="0.0.0.0"
+    echo "🌐 启用局域网共享模式 (0.0.0.0:28111)"
+    echo "   其他设备可通过 http://$(hostname -s).local:28111 访问"
+else
+    HOST="127.0.0.1"
+fi
+
 UV_NO_SYNC=1 uv run --no-sync uvicorn src.api.server:app \
-    --host 127.0.0.1 \
+    --host $HOST \
     --port 28111 \
     > runtime/logs/server.log 2>&1 &
 
