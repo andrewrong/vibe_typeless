@@ -206,9 +206,10 @@ class SenseVoiceASR:
         result = stream.result.text.strip()
 
         if result:
-            logger.debug(f"📝 SenseVoice result: '{result[:50]}...'")
+            logger.debug(f"📝 SenseVoice raw result: '{result[:50]}...'")
             # Convert traditional Chinese to simplified Chinese
             result = self._to_simplified_chinese(result)
+            logger.debug(f"📝 SenseVoice converted result: '{result[:50]}...'")
 
         return result
 
@@ -231,10 +232,14 @@ class SenseVoiceASR:
         converter = _get_opencc_converter()
         if converter is False:
             # opencc not available, return original text
+            logger.warning("opencc not available, skipping traditional-to-simplified conversion")
             return text
 
         try:
-            return converter.convert(text)
+            converted = converter.convert(text)
+            if converted != text:
+                logger.info(f"🔄 Converted traditional to simplified: '{text[:30]}...' -> '{converted[:30]}...'")
+            return converted
         except Exception as e:
             logger.warning(f"Failed to convert traditional to simplified: {e}")
             return text

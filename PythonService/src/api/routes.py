@@ -102,6 +102,50 @@ from src.api.websocket_stream import streamer
 from src.api.job_queue import job_queue, JobInfo
 from src.monitoring import start_session_monitoring, record_preview_generated, record_session_completed, record_asr_success, start_processing, end_processing
 
+# Module-level converter cache for traditional-to-simplified Chinese conversion
+_chinese_converter = None
+
+
+def _get_chinese_converter():
+    """Get or create the OpenCC converter for traditional to simplified Chinese."""
+    global _chinese_converter
+    if _chinese_converter is None:
+        try:
+            import opencc
+            _chinese_converter = opencc.OpenCC('t2s')
+            logger.debug("Chinese converter initialized (t2s)")
+        except ImportError:
+            logger.warning("opencc not installed, Chinese conversion disabled")
+            _chinese_converter = False
+    return _chinese_converter
+
+
+def convert_to_simplified_chinese(text: str) -> str:
+    """
+    Convert traditional Chinese characters to simplified Chinese.
+    
+    Args:
+        text: Input text that may contain traditional Chinese characters
+        
+    Returns:
+        Text with traditional characters converted to simplified
+    """
+    if not text:
+        return text
+    
+    converter = _get_chinese_converter()
+    if converter is False:
+        return text
+    
+    try:
+        converted = converter.convert(text)
+        if converted != text:
+            logger.info(f"🔄 Converted to simplified Chinese: '{text[:30]}...' -> '{converted[:30]}...'")
+        return converted
+    except Exception as e:
+        logger.warning(f"Failed to convert Chinese text: {e}")
+        return text
+
 
 # Request/Response models
 class SessionStartRequest(BaseModel):

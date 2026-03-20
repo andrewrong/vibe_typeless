@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 # Change this to switch between models
 MODEL_TYPE: Literal["whisper", "vibevoice", "sensevoice"] = "sensevoice"
 
+# Allow fallback to whisper when primary model fails
+# Set to False to make model failures visible (recommended for production)
+ALLOW_FALLBACK: bool = False
+
 # Global singleton model instances per language (prevents memory leaks from repeated model loading)
 _cached_models: dict = {}
 _default_language: str = "zh"  # Default to Chinese for better accuracy (was "auto")
@@ -97,9 +101,18 @@ def get_asr_model(language: str = "auto"):
         except ImportError as e:
             logger.error(f"❌ Failed to import SenseVoice: {e}")
             logger.error("To use SenseVoice: uv add sherpa-onnx")
-            logger.error("Falling back to Whisper...")
-            from .whisper_model import WhisperASR
-            _cached_models[cache_key] = WhisperASR(model_size="medium")
+            if ALLOW_FALLBACK:
+                logger.warning("⚠️  ALLOW_FALLBACK is True, falling back to Whisper")
+                logger.warning("⚠️  To enforce SenseVoice and make errors visible, set ALLOW_FALLBACK = False")
+                from .whisper_model import WhisperASR
+                _cached_models[cache_key] = WhisperASR(model_size="medium")
+            else:
+                logger.error("❌ ALLOW_FALLBACK is False, raising exception")
+                raise RuntimeError(
+                    f"SenseVoice ASR model failed to load: {e}\n"
+                    "To fix: uv add sherpa-onnx\n"
+                    "Or set ALLOW_FALLBACK = True in src/asr/__init__.py"
+                ) from e
     elif MODEL_TYPE == "vibevoice":
         try:
             from .vibevoice_model import VibeVoiceASR
@@ -108,9 +121,18 @@ def get_asr_model(language: str = "auto"):
         except ImportError as e:
             logger.error(f"❌ Failed to import VibeVoice: {e}")
             logger.error("To use VibeVoice: uv add mlx-audio")
-            logger.error("Falling back to Whisper...")
-            from .whisper_model import WhisperASR
-            _cached_models[cache_key] = WhisperASR(model_size="medium")
+            if ALLOW_FALLBACK:
+                logger.warning("⚠️  ALLOW_FALLBACK is True, falling back to Whisper")
+                logger.warning("⚠️  To enforce VibeVoice and make errors visible, set ALLOW_FALLBACK = False")
+                from .whisper_model import WhisperASR
+                _cached_models[cache_key] = WhisperASR(model_size="medium")
+            else:
+                logger.error("❌ ALLOW_FALLBACK is False, raising exception")
+                raise RuntimeError(
+                    f"VibeVoice ASR model failed to load: {e}\n"
+                    "To fix: uv add mlx-audio\n"
+                    "Or set ALLOW_FALLBACK = True in src/asr/__init__.py"
+                ) from e
     else:
         # Default: Whisper
         from .whisper_model import WhisperASR
@@ -159,14 +181,26 @@ def get_model_info() -> dict:
     Get information about the current model
 
     Returns:
-        Dict with model info
+        Dict with model info including actual model class and fallback status
     """
     first_cached = next(iter(_cached_models.values()), None) if _cached_models else None
+    
+    # Determine actual model class (may differ from MODEL_TYPE if fallback occurred)
+    actual_type = MODEL_TYPE
+    if first_cached:
+        actual_type = first_cached.__class__.__name__.replace("ASR", "").lower()
+    
+    # Check if we're using a fallback model
+    is_fallback = (MODEL_TYPE != actual_type) if first_cached else False
+    
     return {
-        "type": MODEL_TYPE,
+        "configured_type": MODEL_TYPE,           # What was configured
+        "actual_type": actual_type,              # What's actually running
+        "is_fallback": is_fallback,              # Whether fallback occurred
+        "allow_fallback": ALLOW_FALLBACK,        # Whether fallback is enabled
         "cached_languages": list(_cached_models.keys()),
         "sample_rate": first_cached.sample_rate if first_cached else 16000,
     }
 
 
-__all__ = ["get_asr_model", "reset_model_cache", "set_model_type", "get_model_info", "MODEL_TYPE"]
+__all__ = ["get_asr_model", "reset_model_cache", "set_model_type", "get_model_info", "MODEL_TYPE", "ALLOW_FALLBACK"]

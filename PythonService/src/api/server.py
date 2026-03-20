@@ -59,9 +59,15 @@ async def version():
     return get_version_info()
 
 
-# Log version on startup
+# Log version and model info on startup
 logger = logging.getLogger(__name__)
 logger.info(f"🚀 Typeless Python Service v{get_version_string()}")
+
+# Log ASR model configuration
+from ..asr import MODEL_TYPE, ALLOW_FALLBACK
+logger.info(f"🔧 ASR Model configured: {MODEL_TYPE} (fallback: {'enabled' if ALLOW_FALLBACK else 'disabled'})")
+if not ALLOW_FALLBACK:
+    logger.info(f"🔧 Note: ALLOW_FALLBACK=False, model errors will be raised immediately")
 
 # Start periodic monitoring report (every 5 minutes)
 start_periodic_reporting(interval_seconds=300)
