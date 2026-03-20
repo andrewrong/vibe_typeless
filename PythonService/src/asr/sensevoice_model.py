@@ -13,6 +13,23 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Module-level converter cache for lazy initialization
+_converter_instance = None
+
+
+def _get_opencc_converter():
+    """Get or create the OpenCC converter instance (lazy initialization with caching)."""
+    global _converter_instance
+    if _converter_instance is None:
+        try:
+            import opencc
+            _converter_instance = opencc.OpenCC('t2s')  # Traditional to Simplified
+            logger.debug("OpenCC converter initialized (t2s)")
+        except ImportError:
+            logger.warning("opencc not installed, traditional-to-simplified conversion disabled")
+            _converter_instance = False  # Mark as unavailable
+    return _converter_instance
+
 
 class SenseVoiceASR:
     """
@@ -190,8 +207,37 @@ class SenseVoiceASR:
 
         if result:
             logger.debug(f"📝 SenseVoice result: '{result[:50]}...'")
+            # Convert traditional Chinese to simplified Chinese
+            result = self._to_simplified_chinese(result)
 
         return result
+
+    def _to_simplified_chinese(self, text: str) -> str:
+        """
+        Convert traditional Chinese characters to simplified Chinese.
+
+        Uses lazy-initialized OpenCC converter for performance.
+        Falls back to original text if opencc is not available.
+
+        Args:
+            text: Input text that may contain traditional Chinese characters
+
+        Returns:
+            Text with traditional characters converted to simplified
+        """
+        if not text:
+            return text
+
+        converter = _get_opencc_converter()
+        if converter is False:
+            # opencc not available, return original text
+            return text
+
+        try:
+            return converter.convert(text)
+        except Exception as e:
+            logger.warning(f"Failed to convert traditional to simplified: {e}")
+            return text
 
     def update_hotwords(self, hotwords_file: str, hotwords_score: float = 1.5):
         """
@@ -233,8 +279,6 @@ class SenseVoiceASR:
 
 # Test
 if __name__ == "__main__":
-    import soundfile as sf
-
     print("📦 SenseVoice ASR Test")
     print("=" * 50)
 
