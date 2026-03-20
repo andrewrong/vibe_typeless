@@ -1,0 +1,54 @@
+# Git pre-commit hooks for Typeless project
+# Install: uv run pre-commit install
+# Run manually: uv run pre-commit run --all-files
+
+repos:
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+
+  # Secret detection - prevent committing API keys, passwords
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json|yarn.lock|uv.lock|poetry.lock
+
+  # Alternative: gitleaks for secret detection
+  # - repo: https://github.com/gitleaks/gitleaks
+  #   rev: v8.18.0
+  #   hooks:
+  #     - id: gitleaks
+
+  # Python code formatting and linting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Type checking (optional, can be slow)
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.8.0
+  #   hooks:
+  #     - id: mypy
+
+  # Custom hook: Check for sensitive patterns in Python files
+  - repo: local
+    hooks:
+      - id: check-sensitive-patterns
+        name: Check for sensitive patterns
+        entry: PythonService/scripts/check_sensitive_patterns.py
+        language: script
+        files: \.(py|env|yaml|yml|json|toml)$
+        pass_filenames: true
